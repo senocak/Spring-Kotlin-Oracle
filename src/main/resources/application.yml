@@ -1,0 +1,46 @@
+server:
+  port: ${SERVER_PORT:8083}
+spring:
+  application:
+    name: SpringKotlinOracle
+  datasource:
+    url: ${ORACLE_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
+    username: ${ORACLE_USERNAME:my_user}
+    password: ${ORACLE_PASSWORD:password_i_should_change}
+    ddl: ${spring.jpa.hibernate.ddl-auto}
+    ucp:
+      connection-factory-class-name: oracle.jdbc.pool.OracleDataSource
+      #connection-factory-class-name: oracle.jdbc.replay.OracleDataSourceImpl # If you are using Replay datasource
+      sql-for-validate-connection: select * from dual
+      connection-pool-name: SpringKotlinOracleConnectionPoolName1
+      initial-pool-size: 15
+      min-pool-size: 10
+      max-pool-size: 30
+      validate-connection-on-borrow: true
+      seconds-to-trust-idle-connection: 1
+  jpa:
+    database-platform: org.hibernate.dialect.OracleDialect
+    hibernate:
+      ddl-auto: create
+  flyway:
+    enabled: false
+    failOnMissingLocations: true
+    locations: classpath:migration
+    default-schema: ${POSTGRESQL_SCHEMA:public}
+    table: "flyway_migration_history"
+    sqlMigrationPrefix: "V"
+    sqlMigrationSeparator: "__"
+app:
+  jwtSecret: 5367566B59703373367639792F423F4528482B4D6251655468576D5A71347437
+  jwtExpirationInMs: '#{60 * 50 * 1000}' # 50 minutes in milliseconds
+springdoc:
+  api-docs:
+    path: /api/v1/swagger
+  version: 1
+logging:
+  level:
+    org:
+      springframework:
+        security: debug
+        data:
+          jpa: debug
