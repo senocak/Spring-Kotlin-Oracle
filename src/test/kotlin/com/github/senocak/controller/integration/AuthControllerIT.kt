@@ -8,21 +8,14 @@ import com.github.senocak.TestConstants.USER_PASSWORD
 import com.github.senocak.config.SpringBootTestConfig
 import com.github.senocak.controller.AuthController
 import com.github.senocak.controller.BaseController
-import com.github.senocak.domain.User
 import com.github.senocak.domain.dto.LoginRequest
 import com.github.senocak.domain.dto.RegisterRequest
 import com.github.senocak.exception.RestExceptionHandler
-import com.github.senocak.service.UserService
 import com.github.senocak.util.OmaErrorMessageType
-import com.github.senocak.util.RoleName
-import java.util.Date
-import java.util.UUID
 import org.hamcrest.Matchers.containsInAnyOrder
 import org.hamcrest.Matchers.hasSize
 import org.hamcrest.core.IsEqual.equalTo
 import org.hamcrest.core.IsNull
-import org.junit.jupiter.api.AfterAll
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.MethodOrderer
@@ -34,7 +27,6 @@ import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.RequestBuilder
 import org.springframework.test.web.servlet.ResultActions
@@ -52,10 +44,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 class AuthControllerIT {
     @Autowired private lateinit var authController: AuthController
     @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var userService: UserService
-    @Autowired private lateinit var passwordEncoder: PasswordEncoder
     @Autowired private lateinit var restExceptionHandler: RestExceptionHandler
-
     private lateinit var mockMvc: MockMvc
 
     @BeforeEach
@@ -63,43 +52,6 @@ class AuthControllerIT {
         mockMvc = MockMvcBuilders.standaloneSetup(authController)
             .setControllerAdvice(restExceptionHandler)
             .build()
-    }
-
-    @AfterAll
-    fun afterAll() {
-        userService.deleteAllUsers()
-    }
-
-    @BeforeAll
-    fun beforeAll() {
-        User(name = "anil1", email = "anil1@senocak.com", password = passwordEncoder.encode("asenocak"))
-            .also {
-                it.id = UUID.fromString("2cb9374e-4e52-4142-a1af-16144ef4a27d")
-                it.roles = listOf(RoleName.ROLE_USER.role, RoleName.ROLE_ADMIN.role)
-                it.emailActivatedAt = Date()
-            }
-            .run {
-                userService.save(user = this)
-            }
-
-        User(name = "anil2", email = "anil2@gmail.com", password = passwordEncoder.encode("asenocak"))
-            .also {
-                it.id = UUID.fromString("3cb9374e-4e52-4142-a1af-16144ef4a27d")
-                it.roles = listOf(RoleName.ROLE_USER.role)
-                it.emailActivatedAt = Date()
-            }
-            .run {
-                userService.save(user = this)
-            }
-
-        User(name = "anil3", email = "anil3@gmail.com", password = passwordEncoder.encode("asenocak"))
-            .also {
-                it.id = UUID.fromString("4cb9374e-4e52-4142-a1af-16144ef4a27d")
-                it.roles = listOf(RoleName.ROLE_USER.role)
-            }
-            .run {
-                userService.save(user = this)
-            }
     }
 
     @Nested
@@ -118,7 +70,7 @@ class AuthControllerIT {
             val requestBuilder: RequestBuilder = MockMvcRequestBuilders
                 .post("${BaseController.V1_AUTH_URL}/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(writeValueAsString(request))
+                .content(writeValueAsString(value = request))
             // When
             val perform: ResultActions = mockMvc.perform(requestBuilder)
             // Then

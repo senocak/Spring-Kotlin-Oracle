@@ -1,16 +1,8 @@
 package com.github.senocak.service
 
-import com.github.senocak.createTestTodo
 import com.github.senocak.createTestUser
-import com.github.senocak.domain.TodoItem
-import com.github.senocak.domain.TodoItemRepository
 import com.github.senocak.domain.User
 import com.github.senocak.domain.UserRepository
-import com.github.senocak.domain.dto.CreateTodoDto
-import com.github.senocak.domain.dto.UpdateTodoDto
-import com.github.senocak.exception.ServerException
-import java.util.Optional
-import java.util.UUID
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -24,13 +16,9 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
-import org.mockito.ArgumentMatchers
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.verify
-import org.springframework.data.domain.Page
-import org.springframework.data.domain.PageImpl
-import org.springframework.data.domain.Pageable
+import javax.sql.DataSource
 import org.springframework.security.core.userdetails.User as SecurityUser
 
 @Tag("unit")
@@ -38,13 +26,12 @@ import org.springframework.security.core.userdetails.User as SecurityUser
 @DisplayName("Unit Tests for UserService")
 class UserServiceTest {
     private val userRepository: UserRepository = Mockito.mock(UserRepository::class.java)
-    private val todoItemRepository: TodoItemRepository = Mockito.mock(TodoItemRepository::class.java)
     private var auth: Authentication = Mockito.mock(Authentication::class.java)
     private var securityUser: SecurityUser = Mockito.mock(SecurityUser::class.java)
-    private val userService: UserService = UserService(userRepository = userRepository, todoItemRepository = todoItemRepository)
+    private var dataSource: DataSource = Mockito.mock(DataSource::class.java)
+    private val userService: UserService = UserService(userRepository = userRepository, dataSource = dataSource)
 
     private val user: User = createTestUser()
-    private val todo: TodoItem = createTestTodo()
 
     @Test
     fun givenUsername_whenExistsByEmail_thenAssertResult() {
@@ -139,86 +126,5 @@ class UserServiceTest {
         val loggedInUser: User = userService.loggedInUser()
         // Then
         assertEquals(user.email, loggedInUser.email)
-    }
-
-    @Test
-    fun givenIdAndPageable_whenFindByTodoItems_thenAssertResult() {
-        // Given
-        val id: UUID = UUID.randomUUID()
-        val pageable: Pageable = Pageable.unpaged()
-        val pages: PageImpl<TodoItem> = PageImpl(listOf(element = todo))
-        doReturn(value = pages).`when`(todoItemRepository).findAllByOwner(owner = id, pageable = pageable)
-        // When
-        val response: Page<TodoItem> = userService.findByTodoItems(id = id, pageable = pageable)
-        // Then
-        assertEquals(1, response.totalPages)
-        assertEquals(1, response.totalElements)
-        assertEquals(1, response.content.size)
-        assertEquals(todo.id, response.content.first().id)
-        assertEquals(todo.description, response.content.first().description)
-        assertEquals(todo.finished, response.content.first().finished)
-    }
-
-    @Test
-    fun givenId_whenFindByTodoItem_thenAssertResult() {
-        // Given
-        val id: UUID = UUID.randomUUID()
-        doReturn(value = Optional.of(todo)).`when`(todoItemRepository).findById(id)
-        // When
-        val response: TodoItem = userService.findTodoItem(id = id)
-        // Then
-        assertEquals(todo.id, response.id)
-        assertEquals(todo.description, response.description)
-        assertEquals(todo.finished, response.finished)
-    }
-
-    @Test
-    fun givenId_whenFindByTodoItem_thenThrowServerException() {
-        // Given
-        val id: UUID = UUID.randomUUID()
-        doReturn(value = Optional.empty<TodoItem>()).`when`(todoItemRepository).findById(id)
-        // When
-        val response = Executable { userService.findTodoItem(id = id) }
-        // Then
-        assertThrows(ServerException::class.java, response)
-    }
-
-    @Test
-    fun givenId_whenCreateTodoItem_thenAssertResult() {
-        // Given
-        val createTodo = CreateTodoDto(description = "description")
-        doReturn(value = todo).`when`(todoItemRepository).save(ArgumentMatchers.any(TodoItem::class.java))
-        // When
-        val response: TodoItem = userService.createTodoItem(createTodo = createTodo, owner = user)
-        // Then
-        assertEquals(todo.id, response.id)
-        assertEquals(createTodo.description, response.description)
-        assertFalse(response.finished)
-    }
-
-    @Test
-    fun givenId_whenUpdateTodoItem_thenAssertResult() {
-        // Given
-        val id: UUID = UUID.randomUUID()
-        doReturn(value = Optional.of(todo)).`when`(todoItemRepository).findById(id)
-        val updateTodoDto = UpdateTodoDto(description = "description", finished = true)
-        doReturn(value = todo).`when`(todoItemRepository).save(ArgumentMatchers.any(TodoItem::class.java))
-        // When
-        val response: TodoItem = userService.updateTodoItem(id = id, updateTodoDto = updateTodoDto)
-        // Then
-        assertEquals(todo.id, response.id)
-        assertEquals(updateTodoDto.description, response.description)
-        assertEquals(updateTodoDto.finished, response.finished)
-    }
-
-    @Test
-    fun givenId_whenDeleteTodoItem_thenAssertResult() {
-        // Given
-        val id: UUID = UUID.randomUUID()
-        doReturn(value = Optional.of(todo)).`when`(todoItemRepository).findById(id)
-        // When
-        userService.deleteTodoItem(id = id)
-        // Then
-        verify(todoItemRepository).delete(todo)
     }
 }

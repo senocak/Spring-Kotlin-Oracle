@@ -1,5 +1,6 @@
 package com.github.senocak.domain
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.github.senocak.util.RoleName
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -8,6 +9,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.FetchType
 import jakarta.persistence.ForeignKey
 import jakarta.persistence.GeneratedValue
+import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.JoinTable
@@ -16,14 +18,17 @@ import jakarta.persistence.MappedSuperclass
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import org.hibernate.annotations.GenericGenerator
+import org.hibernate.annotations.IdGeneratorType
 import java.io.Serializable
 import java.util.Date
 import java.util.UUID
 
+
 @MappedSuperclass
 open class BaseDomain(
     @Id
-    @GeneratedValue(generator = "UUID")
+    //@GeneratedValue(generator = "UUID")
+    @GeneratedValue(strategy = GenerationType.UUID)
     @GenericGenerator(name = "UUID", strategy = "org.hibernate.id.UUIDGenerator")
     @Column(name = "id", updatable = false, nullable = false)
     var id: UUID? = null,
@@ -50,10 +55,27 @@ data class User(
     @ManyToMany(fetch = FetchType.EAGER)
     var roles: List<Role> = arrayListOf()
 
-    @Column(name = "last_name", nullable = false, length = 50)
+    @Column(name = "last_name", nullable = true, length = 50)
     var lastName: String? = null
 }
 
 @Entity
 @Table(name = "roles")
 data class Role(@Column @Enumerated(EnumType.STRING) var name: RoleName? = null): BaseDomain()
+
+//@Entity
+//@Table(name = "shedlock")
+//class Shedlock {
+//    @Id
+//    @Column(name = "name", length = 64, nullable = false)
+//    var name: String? = null
+//
+//    @Column(name = "lock_until", nullable = false)
+//    var lockUntil: Timestamp? = null
+//
+//    @Column(name = "locked_at", nullable = false)
+//    var lockedAt: Timestamp? = null
+//
+//    @Column(name = "locked_by", length = 255, nullable = false)
+//    var lockedBy: String? = null
+//}

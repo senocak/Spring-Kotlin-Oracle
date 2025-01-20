@@ -1,7 +1,6 @@
 package com.github.senocak.controller
 
 import com.github.senocak.domain.User
-import com.github.senocak.domain.dto.ExceptionDto
 import com.github.senocak.domain.dto.LoginRequest
 import com.github.senocak.domain.dto.RegisterRequest
 import com.github.senocak.domain.dto.UserResponse
@@ -19,10 +18,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
-import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
-import jakarta.servlet.http.HttpServletRequest
-import java.util.UUID
 import org.slf4j.Logger
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
@@ -32,6 +28,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AuthenticationManager
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.security.web.csrf.CsrfToken
 import org.springframework.validation.BindingResult
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
@@ -57,26 +54,14 @@ class AuthController(
 
     @PostMapping("/login")
     @Operation(summary = "Login Endpoint", tags = ["Authentication"])
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "201", description = "successful operation",
-                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = UserWrapperResponse::class)))),
-            ApiResponse(responseCode = "400", description = "Bad credentials",
-                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = ExceptionDto::class)))),
-            ApiResponse(responseCode = "500", description = "internal server error occurred",
-                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = ExceptionDto::class))))
-    ])
+    @ApiResponse(responseCode = "201", description = "successful operation", content = [
+        Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = UserWrapperResponse::class))])
     @Throws(ServerException::class)
     fun login(
         @Parameter(description = "Request body to login", required = true) @Validated @RequestBody loginRequest: LoginRequest,
-        resultOfValidation: BindingResult,
-        request: HttpServletRequest
+        resultOfValidation: BindingResult
     ): ResponseEntity<UserWrapperResponse> =
         validate(resultOfValidation = resultOfValidation)
-            .also {
-                val header = request.getHeader("X-Custom-UserId")
-                println(header)
-            }
             .run { authenticationManager.authenticate(UsernamePasswordAuthenticationToken(loginRequest.email, loginRequest.password)) }
             .run { userService.findByEmail(email = loginRequest.email) }
             .run {
@@ -87,15 +72,9 @@ class AuthController(
             }
 
     @PostMapping("/register")
-    @Operation(summary = "Register Endpoint", tags = ["Authentication"],
-        responses = [
-            ApiResponse(responseCode = "200", description = "successful operation",
-                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = UserWrapperResponse::class)))),
-            ApiResponse(responseCode = "400", description = "Bad credentials",
-                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = ExceptionDto::class)))),
-            ApiResponse(responseCode = "500", description = "internal server error occurred",
-                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = ExceptionDto::class))))
-    ])
+    @ApiResponse(responseCode = "200", description = "successful operation", content = [
+        Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = Map::class))]
+    )
     @ResponseStatus(code = HttpStatus.CREATED)
     @Throws(ServerException::class)
     fun register(
@@ -108,7 +87,6 @@ class AuthController(
                 .apply { log.error(this) }
                 .run { throw ServerException(omaErrorMessageType = OmaErrorMessageType.JSON_SCHEMA_VALIDATOR, variables = arrayOf(this)) }
         val user: User = User(name = signUpRequest.name, email = signUpRequest.email, password = passwordEncoder.encode(signUpRequest.password))
-            .also { it.id = UUID.randomUUID() }
             .also { it.roles = listOf(element = roleService.findByName(roleName = RoleName.fromString(r = RoleName.ROLE_USER.role))) }
         val result: User = userService.save(user = user)
             .also { log.info("UserRegisteredEvent is published for user: $user") }
@@ -128,6 +106,7 @@ class AuthController(
             .also { log.info("UserWrapperResponse is generated. UserWrapperResponse: $it") }
     }
 
-    @GetMapping("/ping")
-    fun ping() = "pong"
+    @GetMapping("/csrf")
+    fun csrf(csrfToken: CsrfToken): CsrfToken =
+        csrfToken
 }

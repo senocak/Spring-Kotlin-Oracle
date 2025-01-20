@@ -3,25 +3,21 @@ package com.github.senocak
 import com.github.senocak.TestConstants.USER_EMAIL
 import com.github.senocak.TestConstants.USER_NAME
 import com.github.senocak.TestConstants.USER_PASSWORD
-import com.github.senocak.domain.TodoItem
+import com.github.senocak.domain.Role
 import com.github.senocak.domain.User
 import com.github.senocak.util.RoleName
 import java.util.ArrayList
-import java.util.Date
 import java.util.UUID
 
 fun createTestUser(): User =
     User(name = USER_NAME, email = USER_EMAIL, password = USER_PASSWORD)
-        .also {
+        .also { it: User ->
             it.id = UUID.randomUUID()
-            it.roles = arrayListOf<String>()
-                .also { list: ArrayList<String> -> list.add(element = RoleName.ROLE_USER.role) }
-                .also { list: ArrayList<String> -> list.add(element = RoleName.ROLE_ADMIN.role) }
-            it.emailActivatedAt = Date()
+            it.roles = arrayListOf<Role>()
+                .also { list: ArrayList<Role> -> list.add(element = createRole(RoleName.ROLE_USER)) }
+                .also { list: ArrayList<Role> -> list.add(element = createRole(RoleName.ROLE_ADMIN)) }
         }
 
-fun createTestTodo(): TodoItem =
-    TodoItem(description = "description", owner = UUID.randomUUID(), finished = false)
-        .also {
-            it.id = UUID.randomUUID()
-        }
+fun createRole(role: RoleName? = RoleName.ROLE_USER): Role =
+    Role(name = role)
+        .also { it: Role -> it.id = UUID.randomUUID() }

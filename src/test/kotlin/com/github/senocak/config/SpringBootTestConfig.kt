@@ -1,6 +1,6 @@
 package com.github.senocak.config
 
-import com.github.senocak.config.initializer.CouchbaseInitializer
+import com.github.senocak.config.initializer.OracleInitializer
 import org.junit.jupiter.api.ClassOrderer
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.TestClassOrder
@@ -22,6 +22,6 @@ import org.springframework.transaction.annotation.Transactional
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @ContextConfiguration(initializers = [
-    CouchbaseInitializer::class,
+    OracleInitializer::class,
 ])
 annotation class SpringBootTestConfig

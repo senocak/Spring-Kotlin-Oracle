@@ -43,5 +43,7 @@ abstract class BaseController {
         const val V1 = "$API/v1"
         const val V1_AUTH_URL = "$V1/auth"
         const val V1_USER_URL = "$V1/user"
+        const val V1_PUBLIC_URL = "$V1/public"
+        const val V1_CLICKHOUSE_URL = "$V1/clickhouse"
     }
 }

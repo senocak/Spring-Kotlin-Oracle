@@ -4,12 +4,14 @@ import com.github.senocak.TestConstants.USER_EMAIL
 import com.github.senocak.TestConstants.USER_NAME
 import com.github.senocak.TestConstants.USER_PASSWORD
 import com.github.senocak.createTestUser
+import com.github.senocak.domain.Role
 import com.github.senocak.domain.User
 import com.github.senocak.domain.dto.LoginRequest
 import com.github.senocak.domain.dto.RegisterRequest
 import com.github.senocak.domain.dto.UserWrapperResponse
 import com.github.senocak.exception.ServerException
 import com.github.senocak.security.JwtTokenProvider
+import com.github.senocak.service.RoleService
 import com.github.senocak.service.UserService
 import com.github.senocak.util.OmaErrorMessageType
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -46,6 +48,7 @@ class AuthControllerTest {
     private val tokenProvider: JwtTokenProvider = mock<JwtTokenProvider>()
     private val passwordEncoder: PasswordEncoder = mock<PasswordEncoder>()
     private val authenticationManager: AuthenticationManager = mock<AuthenticationManager>()
+    private val roleService: RoleService = mock<RoleService>()
     private val authentication: Authentication = mock<Authentication>()
     private val bindingResult: BindingResult = mock<BindingResult>()
     private var user: User = createTestUser()
@@ -57,6 +60,7 @@ class AuthControllerTest {
             tokenProvider = tokenProvider,
             passwordEncoder = passwordEncoder,
             authenticationManager = authenticationManager,
+            roleService = roleService,
             jwtExpirationInMs = 100,
         )
     }
@@ -68,28 +72,6 @@ class AuthControllerTest {
         fun setup() {
             loginRequest.email = USER_NAME
             loginRequest.password = USER_PASSWORD
-        }
-
-        @Test
-        @Throws(ServerException::class)
-        fun givenNotActivatedUser_whenLogin_thenThrowException() {
-            // Given
-            user.emailActivatedAt = null
-            whenever(methodCall = authenticationManager.authenticate(UsernamePasswordAuthenticationToken(loginRequest.email, loginRequest.password)))
-                .thenReturn(authentication)
-            whenever(methodCall = userService.findByEmail(email = loginRequest.email)).thenReturn(user)
-            val generatedToken = "generatedToken"
-            whenever(methodCall = tokenProvider.generateJwtToken(email = eq(user.email!!), roles = anyList())).thenReturn(generatedToken)
-            // When
-            val response = Executable {
-                authController.login(loginRequest = loginRequest, resultOfValidation = bindingResult)
-            }
-            // Then
-            val assertThrows = assertThrows(ServerException::class.java, response)
-            assertEquals(HttpStatus.UNAUTHORIZED, assertThrows.statusCode)
-            assertEquals(OmaErrorMessageType.UNAUTHORIZED, assertThrows.omaErrorMessageType)
-            assertEquals(1, assertThrows.variables.size)
-            assertEquals("email_not_activated", assertThrows.variables.first())
         }
 
         @Test

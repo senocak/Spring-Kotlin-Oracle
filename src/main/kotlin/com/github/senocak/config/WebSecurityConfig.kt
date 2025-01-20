@@ -1,42 +1,31 @@
 package com.github.senocak.config
 
 import com.github.senocak.controller.BaseController
-import com.github.senocak.domain.Role
-import com.github.senocak.domain.User
+import com.github.senocak.security.CustomAuthenticationManager
 import com.github.senocak.security.JwtAuthenticationEntryPoint
 import com.github.senocak.security.JwtAuthenticationFilter
-import com.github.senocak.service.UserService
-import com.github.senocak.util.RoleName
-import com.github.senocak.util.logger
-import org.slf4j.Logger
-import org.slf4j.MDC
+import com.github.senocak.service.MyCookieCsrfTokenRepository
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
-import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException
-import org.springframework.security.authentication.AuthenticationManager
-import org.springframework.security.authentication.AuthenticationProvider
-import org.springframework.security.authentication.BadCredentialsException
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.annotation.web.invoke
 import org.springframework.security.config.http.SessionCreationPolicy
-import org.springframework.security.core.Authentication
-import org.springframework.security.core.authority.SimpleGrantedAuthority
-import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.security.web.csrf.CsrfTokenRepository
+import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository
+import org.springframework.security.web.util.matcher.RequestMatcher
 
 @Configuration
 @EnableWebSecurity
 class WebSecurityConfig(
     private val unauthorizedHandler: JwtAuthenticationEntryPoint,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    private val customAuthenticationManager: AuthenticationManager
+    private val customAuthenticationManager: CustomAuthenticationManager,
+    private val myCookieCsrfTokenRepository: MyCookieCsrfTokenRepository
 ) {
-
     /**
      * Override this method to configure the HttpSecurity.
      * @param http -- It allows configuring web based security for specific http requests
@@ -44,9 +33,13 @@ class WebSecurityConfig(
      */
     @Profile("!integration-test")
     @Bean
-    fun securityFilterChainDSL(http: HttpSecurity, customAuthenticationProvider: AuthenticationProvider): SecurityFilterChain =
+    fun securityFilterChainDSL(http: HttpSecurity): SecurityFilterChain =
         http {
-            csrf { disable() }
+            csrf {
+                //csrfTokenRepository = crossSiteRequestForgery() //CookieCsrfTokenRepository.withHttpOnlyFalse()
+                csrfTokenRepository = myCookieCsrfTokenRepository
+                requireCsrfProtectionMatcher = RequestMatcher { it.method == "POST" }
+            }
             formLogin { disable() }
             httpBasic { disable() }
             exceptionHandling { authenticationEntryPoint = unauthorizedHandler }
@@ -66,24 +59,9 @@ class WebSecurityConfig(
         .run { http.build() }
 
     @Bean
-    fun customAuthenticationProvider(userService: UserService, passwordEncoder: PasswordEncoder): AuthenticationProvider {
-        return object : AuthenticationProvider {
-            override fun authenticate(authentication: Authentication): Authentication {
-                val user: User = userService.findByEmail(authentication.name)
-                if (authentication.credentials != null) {
-                    val matches = passwordEncoder.matches(authentication.credentials.toString(), user.password)
-                    if (!matches) {
-                        throw BadCredentialsException("Invalid username or password")
-                    }
-                }
-                val authorities = mutableListOf(SimpleGrantedAuthority(RoleName.ROLE_USER.role))
-                if (user.roles.any { r: Role -> r.name!! == RoleName.ROLE_ADMIN })
-                    authorities.add(element = SimpleGrantedAuthority(RoleName.ROLE_ADMIN.role))
-                return UsernamePasswordAuthenticationToken(user, authentication.credentials, authorities)
-            }
-
-            override fun supports(authentication: Class<*>): Boolean =
-                UsernamePasswordAuthenticationToken::class.java.isAssignableFrom(authentication)
-        }
+    fun crossSiteRequestForgery(): CsrfTokenRepository {
+        val repository = HttpSessionCsrfTokenRepository()
+        repository.setHeaderName("X-XSRF-TOKEN")
+        return repository
     }
 }

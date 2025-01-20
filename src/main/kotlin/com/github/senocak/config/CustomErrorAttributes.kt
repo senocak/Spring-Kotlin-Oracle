@@ -24,7 +24,9 @@ class CustomErrorAttributes : DefaultErrorAttributes() {
         if (errorMessage != null) {
             val omaErrorMessageType = OmaErrorMessageType.NOT_FOUND
             exceptionDto.statusCode = errorAttributes["status"] as Int
-            exceptionDto.variables = arrayOf(errorAttributes["error"].toString(), errorAttributes["message"].toString())
+            val arrayOf: Array<String?> = arrayOf(errorAttributes["error"].toString())
+            errorAttributes["message"]?.let { arrayOf[1] = it.toString() }
+            exceptionDto.variables = arrayOf
             exceptionDto.error = ExceptionDto.OmaErrorMessageTypeDto(omaErrorMessageType.messageId, omaErrorMessageType.text)
         }
         return HashMap<String, Any>()

@@ -36,7 +36,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @Validated
 @RestController
-@Authorize(roles = [ADMIN, USER])
+@Authorize
 @RequestMapping(BaseController.V1_USER_URL)
 @Tag(name = "User", description = "User Controller")
 class UserController(
