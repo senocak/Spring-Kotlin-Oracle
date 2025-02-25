@@ -23,19 +23,19 @@ spring:
     hibernate:
       ddl-auto: validate
   flyway:
-    enabled: false
+    enabled: true
     failOnMissingLocations: true
     locations: classpath:migration
-    default-schema: ${POSTGRESQL_SCHEMA:public}
+    default-schema: ${POSTGRESQL_SCHEMA:MY_USER}
     table: "flyway_migration_history"
     sqlMigrationPrefix: "V"
     sqlMigrationSeparator: "__"
-  redis:
-    DATABASE: ${REDIS_DATABASE:0}
-    HOST: ${REDIS_HOST:localhost}
-    PORT: ${REDIS_PORT:6378}
-    PASSWORD: ${REDIS_PASSWORD:senocak}
-    TIMEOUT: ${REDIS_TIMEOUT:60000}
+  data:
+    redis:
+      HOST: ${REDIS_HOST:localhost}
+      PORT: ${REDIS_PORT:6379}
+      PASSWORD: ${REDIS_PASSWORD:}
+      TIMEOUT: ${REDIS_TIMEOUT:300}
   threads:
     virtual:
       enabled: true
@@ -56,3 +56,16 @@ logging:
     net:
       javacrumbs:
         shedlock: debug
+#management:
+#  endpoints:
+#    web:
+#      exposure:
+#        exclude: info,health,beans,caches,conditions,configprops,env,flyway,loggers,heapdump,threaddump,metrics,sbom,scheduledtasks,mappings
+#        include: appHealth #"*" for all
+#  endpoint:
+#    health:
+#      show-details: always
+#    prometheus:
+#      access: unrestricted
+#    startup:
+#      enabled: true

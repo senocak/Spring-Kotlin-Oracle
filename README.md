@@ -30,3 +30,35 @@ cd backend
 ```sh 
 docker-compose up -d
 ```
+
+### Application Metrics and Monitoring
+
+The application provides comprehensive metrics through a custom actuator endpoint at `/actuator/appHealth`. This endpoint offers:
+
+- Application Metrics
+  - Request counts and error rates
+  - Application uptime
+  - Success rate statistics
+
+- System Metrics
+  - JVM memory usage
+  - Available processors
+  - JVM version information
+
+- Connection Status
+  - Redis connectivity
+  - Database health
+  - Scheduler status
+
+- Security Information
+  - Lock status
+  - Build properties
+  - Health indicators
+
+To access the metrics:
+```sh
+curl http://localhost:8083/actuator/appHealth
+```
+
+### Spring Boot Actuator Misconfigurations
+- https://www.wiz.io/blog/spring-boot-actuator-misconfigurations

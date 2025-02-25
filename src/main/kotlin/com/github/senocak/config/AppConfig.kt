@@ -12,22 +12,31 @@ import io.swagger.v3.oas.models.security.SecurityScheme
 import io.swagger.v3.oas.models.servers.Server
 import org.springdoc.core.models.GroupedOpenApi
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties
+import org.springframework.boot.actuate.autoconfigure.health.HealthEndpointProperties
+import org.springframework.boot.actuate.endpoint.Show
+import org.springframework.boot.info.BuildProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Primary
 import org.springframework.scheduling.annotation.EnableAsync
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.web.client.RestTemplate
+import org.springframework.web.filter.CommonsRequestLoggingFilter
 import org.springframework.web.servlet.config.annotation.CorsRegistry
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
+import java.time.Duration
 
 @EnableAsync
 @Configuration
 class AppConfig(
-    private val authorizationInterceptor: AuthorizationInterceptor
+    private val authorizationInterceptor: AuthorizationInterceptor,
+    private val metricsInterceptor: MetricsInterceptor,
+    private val buildProperties: BuildProperties
 ): WebMvcConfigurer {
     override fun addCorsMappings(registry: CorsRegistry) {
         registry.addMapping("/**")
@@ -57,6 +66,10 @@ class AppConfig(
         registry
             .addInterceptor(authorizationInterceptor)
             .addPathPatterns("/api/v1/**")
+
+        registry
+            .addInterceptor(metricsInterceptor)
+            .addPathPatterns("/**")
     }
 
     @Bean
@@ -107,4 +120,42 @@ class AppConfig(
      */
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+
+    @Bean
+    fun logFilter(): CommonsRequestLoggingFilter =
+        CommonsRequestLoggingFilter().apply {
+            setIncludeQueryString(true)
+            setIncludePayload(true)
+            setMaxPayloadLength(10000)
+            setIncludeHeaders(true)
+            setAfterMessagePrefix("REQUEST DATA: ")
+        }
+
+//    @Bean
+//    fun customInfoContributor(): InfoContributor {
+//        return InfoContributor { builder: org.springframework.boot.actuate.info.Info.Builder ->
+//            builder.withDetail("app", mapOf("name" to buildProperties.name, "version" to buildProperties.version))
+//        }
+//    }
+
+    @Bean
+    @Primary
+    fun webEndpointProperties(): WebEndpointProperties =
+        WebEndpointProperties().also { it: WebEndpointProperties ->
+            it.exposure.include = setOf("appHealth") // or use "*" for all
+            it.exposure.exclude = setOf("info", "health", "beans", "caches", "conditions", "configprops", "env",
+                "flyway", "loggers", "heapdump", "threaddump", "metrics", "sbom", "scheduledtasks", "mappings")
+        }
+
+    @Bean
+    @Primary
+    fun healthEndpointProperties(): HealthEndpointProperties =
+        HealthEndpointProperties().also { it: HealthEndpointProperties ->
+            it.showComponents = Show.ALWAYS
+            it.group["health-group"] = HealthEndpointProperties.Group()
+                .also { it.include = mutableSetOf("ping", "diskSpace") }
+            //it.group["health-group"]?.include?.add("ping,diskSpace")
+            it.logging.slowIndicatorThreshold = Duration.ofSeconds(10)
+            it.roles = setOf("ACTUATOR_ADMIN")
+        }
 }

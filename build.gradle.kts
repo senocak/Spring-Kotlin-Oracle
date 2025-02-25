@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    id("org.springframework.boot") version "3.4.0"
+    id("org.springframework.boot") version "3.4.2"
     id("io.spring.dependency-management") version "1.1.4"
     kotlin("jvm") version "1.9.23"
     kotlin("plugin.spring") version "1.9.23"
@@ -14,6 +14,14 @@ java {
     sourceCompatibility = JavaVersion.VERSION_21
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+springBoot {
+    buildInfo {
+        properties {
+            this.name = "Spring Kotlin Oracle"
+        }
     }
 }
 
@@ -42,6 +50,8 @@ dependencies {
     }
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0")
     implementation("org.flywaydb:flyway-core:11.1.0") // FlywayException: Unsupported Database: Oracle 23.6
+    runtimeOnly("org.flywaydb:flyway-database-oracle:11.1.0")
+
     implementation("io.jsonwebtoken:jjwt-api:$jjwt")
     implementation("io.jsonwebtoken:jjwt-impl:$jjwt")
     implementation("io.jsonwebtoken:jjwt-jackson:$jjwt")

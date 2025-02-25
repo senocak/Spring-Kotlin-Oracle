@@ -5,6 +5,7 @@ import com.github.senocak.security.CustomAuthenticationManager
 import com.github.senocak.security.JwtAuthenticationEntryPoint
 import com.github.senocak.security.JwtAuthenticationFilter
 import com.github.senocak.service.MyCookieCsrfTokenRepository
+import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
@@ -49,6 +50,7 @@ class WebSecurityConfig(
                 authorize(pattern = "${BaseController.V1}/swagger/**", access = permitAll)
                 authorize(pattern = "/swagger**/**", access = permitAll)
                 authorize(pattern = "/error**/**", access = permitAll)
+                authorize(matches = EndpointRequest.toAnyEndpoint(), access = permitAll)
                 authorize(matches = anyRequest, access = authenticated)
             }
             authenticationManager = customAuthenticationManager
