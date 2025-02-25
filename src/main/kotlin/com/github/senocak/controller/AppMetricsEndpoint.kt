@@ -11,11 +11,34 @@ import org.springframework.boot.actuate.health.HealthEndpoint
 import org.springframework.boot.info.BuildProperties
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
-import redis.clients.jedis.JedisPool
+import java.sql.Connection
 
 /**
  * Custom metrics endpoint that provides detailed application health and metrics information.
  * Available at /actuator/appHealth
+ *
+ * Performance metrics include both global and per-endpoint statistics:
+ * 
+ * Metrics are organized hierarchically:
+ * - Global application metrics
+ * - HTTP method level (GET, POST, etc.)
+ *   - Path-specific metrics
+ *     - Request counts
+ *     - Response times
+ *     - Error rates
+ * Global metrics:
+ *  - Overall application performance
+ *  - Total request counts and error rates
+ *  - System-wide response time statistics
+ *
+ * Per-endpoint metrics:
+ *  - Individual endpoint performance
+ *  - Endpoint-specific request counts and error rates
+ *  - Detailed response time statistics per endpoint
+ * - Average response time
+ * - Maximum and minimum response times
+ * - 95th percentile response time (calculated from last 1000 requests)
+ * - Request counts and error rates
  *
  * Provides:
  * - Application metrics (requests, errors, uptime)
@@ -28,26 +51,105 @@ import redis.clients.jedis.JedisPool
 @Endpoint(id = "appHealth")
 class AppMetricsEndpoint(
     private val redisService: RedisService,
-    private val jedisPool: JedisPool,
     private val jdbcTemplate: JdbcTemplate,
     private val buildProperties: BuildProperties,
     private val health: HealthEndpoint,
 ) {
     private val log: Logger by logger()
-
-
-
     private var startTime: Long = System.currentTimeMillis()
     private var requestCount: Long = 0
     private var errorCount: Long = 0
+    private var totalResponseTime: Long = 0
+    private var maxResponseTime: Long = 0
+    private var minResponseTime: Long = Long.MAX_VALUE
+    private val responseTimes: MutableList<Long> = mutableListOf()
+    private val maxSampleSize: Int = 1000 // Keep last 1000 requests for percentile calculation
+    private val endpointMetrics: MutableMap<String, MutableMap<String, EndpointMetrics>> = mutableMapOf()
 
-    fun incrementRequestCount() {
-        requestCount++
+    private fun getOrCreateMetrics(method: String, path: String): EndpointMetrics {
+        return synchronized(endpointMetrics) {
+            endpointMetrics
+                .getOrPut(method) { mutableMapOf() }
+                .getOrPut(path) { EndpointMetrics() }
+        }
     }
 
-    fun incrementErrorCount() {
+    data class EndpointMetrics(
+        var requestCount: Long = 0,
+        var errorCount: Long = 0,
+        var totalResponseTime: Long = 0,
+        var maxResponseTime: Long = 0,
+        var minResponseTime: Long = Long.MAX_VALUE,
+        val responseTimes: MutableList<Long> = mutableListOf()
+    ) {
+        companion object {
+            private const val MAX_SAMPLES = 1000
+        }
+
+        fun addResponseTime(responseTime: Long) {
+            synchronized(this) {
+                requestCount++
+                totalResponseTime += responseTime
+                maxResponseTime = maxOf(a = maxResponseTime, b = responseTime)
+                minResponseTime = minOf(a = minResponseTime, b = responseTime)
+                if (responseTimes.size >= MAX_SAMPLES) {
+                    responseTimes.removeAt(index = 0)
+                }
+                responseTimes.add(responseTime)
+            }
+        }
+
+        fun calculate95thPercentile(): Long {
+            return if (responseTimes.isEmpty()) 0
+            else {
+                val sortedTimes: List<Long> = responseTimes.sorted()
+                val index: Int = ((responseTimes.size - 1) * 0.95).toInt()
+                sortedTimes[index]
+            }
+        }
+    }
+
+    /**
+     * Adds a response time measurement to the metrics.
+     * Updates total response time and maintains min/max values.
+     * @param responseTime The response time in milliseconds
+     * @param method The HTTP method
+     * @param path The request path
+     */
+    fun addResponseTime(responseTime: Long, method: String, path: String, controller: String) {
+        // Update global metrics
+        totalResponseTime += responseTime
+        maxResponseTime = maxOf(a = maxResponseTime, b = responseTime)
+        minResponseTime = minOf(a = minResponseTime, b = responseTime)
+        synchronized(responseTimes) {
+            if (responseTimes.size >= maxSampleSize) {
+                responseTimes.removeAt(index = 0)
+            }
+            responseTimes.add(element = responseTime)
+        }
+
+        // Update endpoint-specific metrics
+        getOrCreateMetrics(method = method, path = path)
+            .addResponseTime(responseTime = responseTime)
+    }
+
+    fun incrementErrorCount(method: String, path: String) {
         errorCount++
+        getOrCreateMetrics(method = method, path = path).errorCount++
     }
+
+    fun incrementRequestCount(): Long = requestCount++
+    fun incrementErrorCount(): Long = errorCount++
+
+    private fun calculate95thPercentile(): Long =
+        synchronized(responseTimes) {
+            if (responseTimes.isEmpty()) 0
+            else {
+                val sortedTimes: List<Long> = responseTimes.sorted()
+                val index: Int = ((responseTimes.size - 1) * 0.95).toInt()
+                sortedTimes[index]
+            }
+        }
 
     @ReadOperation
     fun metrics(): Map<String, Any> =
@@ -59,8 +161,30 @@ class AppMetricsEndpoint(
                 "requests" to mapOf(
                     "total" to requestCount,
                     "errors" to errorCount,
-                    "successRate" to if (requestCount > 0) ((requestCount - errorCount) * 100.0 / requestCount) else 100.0
-                )
+                    "successRate" to if (requestCount > 0) ((requestCount - errorCount) * 100.0 / requestCount) else 100.0,
+                    "performance" to mapOf(
+                        "avgResponseTime" to if (requestCount > 0) totalResponseTime.toDouble() / requestCount else 0.0,
+                        "maxResponseTime" to maxResponseTime,
+                        "minResponseTime" to if (minResponseTime == Long.MAX_VALUE) 0 else minResponseTime,
+                        "p95ResponseTime" to calculate95thPercentile()
+                    )
+                ),
+                "endpoints" to synchronized(endpointMetrics) {
+                    endpointMetrics.mapValues { (method: String, pathMetrics: MutableMap<String, EndpointMetrics>) ->
+                        pathMetrics.mapValues { (_, metrics: EndpointMetrics) ->
+                            mapOf(
+                                "requestCount" to metrics.requestCount,
+                                "errorCount" to metrics.errorCount,
+                                "avgResponseTime" to if (metrics.requestCount > 0) 
+                                    metrics.totalResponseTime.toDouble() / metrics.requestCount else 0.0,
+                                "maxResponseTime" to metrics.maxResponseTime,
+                                "minResponseTime" to if (metrics.minResponseTime == Long.MAX_VALUE) 0 
+                                    else metrics.minResponseTime,
+                                "p95ResponseTime" to metrics.calculate95thPercentile()
+                            )
+                        }
+                    }
+                }
             ),
             "system" to mapOf(
                 "memory" to mapOf(
@@ -76,15 +200,16 @@ class AppMetricsEndpoint(
             ),
             "connections" to mapOf(
                 "redis" to mapOf(
-                    "alive" to (jedisPool.resource.ping() != null),
+                    "alive" to redisService.ping(),
+                    "jedisPool" to redisService.jedisPool(),
                     "schedulers" to redisService.getAllValuesForPattern(pattern = "job-lock:${LockConfig.ENV}")
                 ),
                 "database" to mapOf(
                     "alive" to runCatching { 
-                        jdbcTemplate.dataSource?.connection?.use { conn ->
+                        jdbcTemplate.dataSource?.connection?.use { conn: Connection ->
                             !conn.isClosed
                         } ?: false
-                    }.getOrDefault(false)
+                    }.getOrDefault(defaultValue = false)
                 )
             ),
             "security" to mapOf(

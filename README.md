@@ -39,6 +39,18 @@ The application provides comprehensive metrics through a custom actuator endpoin
   - Request counts and error rates
   - Application uptime
   - Success rate statistics
+  - Performance metrics
+    - Global metrics
+      - Average response time
+      - Maximum response time
+      - Minimum response time
+      - 95th percentile response time (based on last 1000 requests)
+    - Per-endpoint metrics (grouped by HTTP method)
+      - Metrics organized by HTTP method (GET, POST, etc.)
+      - Per-path performance statistics
+      - Request counts and error rates per endpoint
+      - Response time statistics (avg, min, max, p95)
+      - Success rate per endpoint
 
 - System Metrics
   - JVM memory usage

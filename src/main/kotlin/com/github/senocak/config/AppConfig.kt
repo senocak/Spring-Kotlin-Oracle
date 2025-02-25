@@ -35,8 +35,7 @@ import java.time.Duration
 @Configuration
 class AppConfig(
     private val authorizationInterceptor: AuthorizationInterceptor,
-    private val metricsInterceptor: MetricsInterceptor,
-    private val buildProperties: BuildProperties
+    @org.springframework.context.annotation.Lazy private val metricsInterceptor: MetricsInterceptor,
 ): WebMvcConfigurer {
     override fun addCorsMappings(registry: CorsRegistry) {
         registry.addMapping("/**")
