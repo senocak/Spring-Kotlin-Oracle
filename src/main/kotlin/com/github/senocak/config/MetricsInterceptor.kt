@@ -32,19 +32,18 @@ class MetricsInterceptor(
         return true
     }
 
-    private fun extractControllerName(handler: Any): String {
-        return when (handler) {
+    private fun extractControllerName(handler: Any): String =
+        when (handler) {
             is HandlerMethod -> handler.beanType.simpleName
             else -> "unknown"
         }
-    }
 
     override fun afterCompletion(request: HttpServletRequest, response: HttpServletResponse, handler: Any, ex: Exception?) {
         val startTime: Long = request.getAttribute(START_TIME_ATTRIBUTE) as Long
         val responseTime: Long = System.currentTimeMillis() - startTime
-        val method = request.method
-        val path = request.requestURI
-        val controller = extractControllerName(handler)
+        val method: String = request.method
+        val path: String = request.requestURI
+        val controller: String = extractControllerName(handler = handler)
 
         metricsEndpoint.addResponseTime(
             responseTime = responseTime,

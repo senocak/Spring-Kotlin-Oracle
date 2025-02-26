@@ -69,8 +69,8 @@ class AppMetricsEndpoint(
     private fun getOrCreateMetrics(method: String, path: String): EndpointMetrics {
         return synchronized(endpointMetrics) {
             endpointMetrics
-                .getOrPut(method) { mutableMapOf() }
-                .getOrPut(path) { EndpointMetrics() }
+                .getOrPut(key = method) { mutableMapOf() }
+                .getOrPut(key = path) { EndpointMetrics() }
         }
     }
 
@@ -91,16 +91,16 @@ class AppMetricsEndpoint(
             maxResponseTime = maxOf(maxResponseTime, responseTime)
             minResponseTime = minOf(minResponseTime, responseTime)
             if (responseTimes.size >= MAX_SAMPLES) {
-                responseTimes.removeAt(0)
+                responseTimes.removeAt(index = 0)
             }
-            responseTimes.add(responseTime)
+            responseTimes.add(element = responseTime)
         }
 
         fun calculate95thPercentile(): Long {
             return if (responseTimes.isEmpty()) 0
             else {
-                val sortedTimes = responseTimes.sorted()
-                val index = ((responseTimes.size - 1) * 0.95).toInt()
+                val sortedTimes: List<Long> = responseTimes.sorted()
+                val index: Int = ((responseTimes.size - 1) * 0.95).toInt()
                 sortedTimes[index]
             }
         }
@@ -122,41 +122,39 @@ class AppMetricsEndpoint(
             fun getHourlyKey(): String = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH"))
         }
 
-        fun getOrCreateTimeBasedMetrics(key: String, metricsMap: MutableMap<String, TimeBasedMetrics>): TimeBasedMetrics {
-            return metricsMap.getOrPut(key) { TimeBasedMetrics() }
-        }
+        fun getOrCreateTimeBasedMetrics(key: String, metricsMap: MutableMap<String, TimeBasedMetrics>): TimeBasedMetrics =
+            metricsMap.getOrPut(key = key) { TimeBasedMetrics() }
 
         fun addResponseTime(responseTime: Long) {
             synchronized(this) {
                 // Update overall metrics
                 requestCount++
                 totalResponseTime += responseTime
-                maxResponseTime = maxOf(maxResponseTime, responseTime)
-                minResponseTime = minOf(minResponseTime, responseTime)
+                maxResponseTime = maxOf(a = maxResponseTime, b = responseTime)
+                minResponseTime = minOf(a = minResponseTime, b = responseTime)
                 if (responseTimes.size >= MAX_SAMPLES) {
-                    responseTimes.removeAt(0)
+                    responseTimes.removeAt(index = 0)
                 }
-                responseTimes.add(responseTime)
+                responseTimes.add(element = responseTime)
 
                 // Update daily metrics
-                val dailyKey = getDailyKey()
-                getOrCreateTimeBasedMetrics(dailyKey, dailyMetrics).addResponseTime(responseTime)
+                getOrCreateTimeBasedMetrics(key = getDailyKey(), metricsMap = dailyMetrics).addResponseTime(responseTime = responseTime)
 
                 // Update hourly metrics
-                val hourlyKey = getHourlyKey()
-                getOrCreateTimeBasedMetrics(hourlyKey, hourlyMetrics).addResponseTime(responseTime)
+                getOrCreateTimeBasedMetrics(key = getHourlyKey(), metricsMap = hourlyMetrics).addResponseTime(responseTime = responseTime)
             }
         }
 
-        fun calculate95thPercentile(): Long {
-            return if (responseTimes.isEmpty()) 0
-            else {
-                val sortedTimes: List<Long> = responseTimes.sorted()
-                val index: Int = ((responseTimes.size - 1) * 0.95).toInt()
-                sortedTimes[index]
+        fun calculate95thPercentile(): Long =
+            when {
+                responseTimes.isEmpty() -> 0
+                else -> {
+                    val sortedTimes: List<Long> = responseTimes.sorted()
+                    val index: Int = ((responseTimes.size - 1) * 0.95).toInt()
+                    sortedTimes[index]
+                }
             }
         }
-    }
 
     /**
      * Adds a response time measurement to the metrics.
@@ -170,7 +168,7 @@ class AppMetricsEndpoint(
         totalResponseTime += responseTime
         maxResponseTime = maxOf(a = maxResponseTime, b = responseTime)
         minResponseTime = minOf(a = minResponseTime, b = responseTime)
-        synchronized(responseTimes) {
+        synchronized(lock = responseTimes) {
             if (responseTimes.size >= maxSampleSize) {
                 responseTimes.removeAt(index = 0)
             }
@@ -184,17 +182,15 @@ class AppMetricsEndpoint(
 
     fun incrementErrorCount(method: String, path: String) {
         errorCount++
-        val metrics = getOrCreateMetrics(method = method, path = path)
-        synchronized(metrics) {
+        val metrics: EndpointMetrics = getOrCreateMetrics(method = method, path = path)
+        synchronized(lock = metrics) {
             metrics.errorCount++
 
             // Update daily metrics
-            val dailyKey = EndpointMetrics.getDailyKey()
-            metrics.getOrCreateTimeBasedMetrics(dailyKey, metrics.dailyMetrics).errorCount++
+            metrics.getOrCreateTimeBasedMetrics(key = EndpointMetrics.getDailyKey(), metricsMap = metrics.dailyMetrics).errorCount++
 
             // Update hourly metrics
-            val hourlyKey = EndpointMetrics.getHourlyKey()
-            metrics.getOrCreateTimeBasedMetrics(hourlyKey, metrics.hourlyMetrics).errorCount++
+            metrics.getOrCreateTimeBasedMetrics(key = EndpointMetrics.getHourlyKey(), metricsMap = metrics.hourlyMetrics).errorCount++
         }
     }
 
@@ -202,12 +198,14 @@ class AppMetricsEndpoint(
     fun incrementErrorCount(): Long = errorCount++
 
     private fun calculate95thPercentile(): Long =
-        synchronized(responseTimes) {
-            if (responseTimes.isEmpty()) 0
-            else {
-                val sortedTimes: List<Long> = responseTimes.sorted()
-                val index: Int = ((responseTimes.size - 1) * 0.95).toInt()
-                sortedTimes[index]
+        synchronized(lock = responseTimes) {
+            when {
+                responseTimes.isEmpty() -> 0
+                else -> {
+                    val sortedTimes: List<Long> = responseTimes.sorted()
+                    val index: Int = ((responseTimes.size - 1) * 0.95).toInt()
+                    sortedTimes[index]
+                }
             }
         }
 
