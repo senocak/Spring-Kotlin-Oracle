@@ -74,7 +74,7 @@ class AppMetricsEndpoint(
         }
     }
 
-    data class EndpointMetrics(
+    data class TimeBasedMetrics(
         var requestCount: Long = 0,
         var errorCount: Long = 0,
         var totalResponseTime: Long = 0,
@@ -85,17 +85,66 @@ class AppMetricsEndpoint(
         companion object {
             private const val MAX_SAMPLES = 1000
         }
+        fun addResponseTime(responseTime: Long) {
+            requestCount++
+            totalResponseTime += responseTime
+            maxResponseTime = maxOf(maxResponseTime, responseTime)
+            minResponseTime = minOf(minResponseTime, responseTime)
+            if (responseTimes.size >= MAX_SAMPLES) {
+                responseTimes.removeAt(0)
+            }
+            responseTimes.add(responseTime)
+        }
+
+        fun calculate95thPercentile(): Long {
+            return if (responseTimes.isEmpty()) 0
+            else {
+                val sortedTimes = responseTimes.sorted()
+                val index = ((responseTimes.size - 1) * 0.95).toInt()
+                sortedTimes[index]
+            }
+        }
+    }
+
+    data class EndpointMetrics(
+        var requestCount: Long = 0,
+        var errorCount: Long = 0,
+        var totalResponseTime: Long = 0,
+        var maxResponseTime: Long = 0,
+        var minResponseTime: Long = Long.MAX_VALUE,
+        val responseTimes: MutableList<Long> = mutableListOf(),
+        val dailyMetrics: MutableMap<String, TimeBasedMetrics> = mutableMapOf(),
+        val hourlyMetrics: MutableMap<String, TimeBasedMetrics> = mutableMapOf()
+    ) {
+        companion object {
+            private const val MAX_SAMPLES = 1000
+            fun getDailyKey(): String = java.time.LocalDate.now().toString()
+            fun getHourlyKey(): String = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH"))
+        }
+
+        fun getOrCreateTimeBasedMetrics(key: String, metricsMap: MutableMap<String, TimeBasedMetrics>): TimeBasedMetrics {
+            return metricsMap.getOrPut(key) { TimeBasedMetrics() }
+        }
 
         fun addResponseTime(responseTime: Long) {
             synchronized(this) {
+                // Update overall metrics
                 requestCount++
                 totalResponseTime += responseTime
-                maxResponseTime = maxOf(a = maxResponseTime, b = responseTime)
-                minResponseTime = minOf(a = minResponseTime, b = responseTime)
+                maxResponseTime = maxOf(maxResponseTime, responseTime)
+                minResponseTime = minOf(minResponseTime, responseTime)
                 if (responseTimes.size >= MAX_SAMPLES) {
-                    responseTimes.removeAt(index = 0)
+                    responseTimes.removeAt(0)
                 }
                 responseTimes.add(responseTime)
+
+                // Update daily metrics
+                val dailyKey = getDailyKey()
+                getOrCreateTimeBasedMetrics(dailyKey, dailyMetrics).addResponseTime(responseTime)
+
+                // Update hourly metrics
+                val hourlyKey = getHourlyKey()
+                getOrCreateTimeBasedMetrics(hourlyKey, hourlyMetrics).addResponseTime(responseTime)
             }
         }
 
@@ -135,7 +184,18 @@ class AppMetricsEndpoint(
 
     fun incrementErrorCount(method: String, path: String) {
         errorCount++
-        getOrCreateMetrics(method = method, path = path).errorCount++
+        val metrics = getOrCreateMetrics(method = method, path = path)
+        synchronized(metrics) {
+            metrics.errorCount++
+
+            // Update daily metrics
+            val dailyKey = EndpointMetrics.getDailyKey()
+            metrics.getOrCreateTimeBasedMetrics(dailyKey, metrics.dailyMetrics).errorCount++
+
+            // Update hourly metrics
+            val hourlyKey = EndpointMetrics.getHourlyKey()
+            metrics.getOrCreateTimeBasedMetrics(hourlyKey, metrics.hourlyMetrics).errorCount++
+        }
     }
 
     fun incrementRequestCount(): Long = requestCount++
@@ -173,14 +233,40 @@ class AppMetricsEndpoint(
                     endpointMetrics.mapValues { (method: String, pathMetrics: MutableMap<String, EndpointMetrics>) ->
                         pathMetrics.mapValues { (_, metrics: EndpointMetrics) ->
                             mapOf(
-                                "requestCount" to metrics.requestCount,
-                                "errorCount" to metrics.errorCount,
-                                "avgResponseTime" to if (metrics.requestCount > 0) 
-                                    metrics.totalResponseTime.toDouble() / metrics.requestCount else 0.0,
-                                "maxResponseTime" to metrics.maxResponseTime,
-                                "minResponseTime" to if (metrics.minResponseTime == Long.MAX_VALUE) 0 
-                                    else metrics.minResponseTime,
-                                "p95ResponseTime" to metrics.calculate95thPercentile()
+                                "overall" to mapOf(
+                                    "requestCount" to metrics.requestCount,
+                                    "errorCount" to metrics.errorCount,
+                                    "avgResponseTime" to if (metrics.requestCount > 0) 
+                                        metrics.totalResponseTime.toDouble() / metrics.requestCount else 0.0,
+                                    "maxResponseTime" to metrics.maxResponseTime,
+                                    "minResponseTime" to if (metrics.minResponseTime == Long.MAX_VALUE) 0 
+                                        else metrics.minResponseTime,
+                                    "p95ResponseTime" to metrics.calculate95thPercentile()
+                                ),
+                                "daily" to metrics.dailyMetrics.mapValues { (_, dailyMetric) ->
+                                    mapOf(
+                                        "requestCount" to dailyMetric.requestCount,
+                                        "errorCount" to dailyMetric.errorCount,
+                                        "avgResponseTime" to if (dailyMetric.requestCount > 0)
+                                            dailyMetric.totalResponseTime.toDouble() / dailyMetric.requestCount else 0.0,
+                                        "maxResponseTime" to dailyMetric.maxResponseTime,
+                                        "minResponseTime" to if (dailyMetric.minResponseTime == Long.MAX_VALUE) 0
+                                            else dailyMetric.minResponseTime,
+                                        "p95ResponseTime" to dailyMetric.calculate95thPercentile()
+                                    )
+                                },
+                                "hourly" to metrics.hourlyMetrics.mapValues { (_, hourlyMetric) ->
+                                    mapOf(
+                                        "requestCount" to hourlyMetric.requestCount,
+                                        "errorCount" to hourlyMetric.errorCount,
+                                        "avgResponseTime" to if (hourlyMetric.requestCount > 0)
+                                            hourlyMetric.totalResponseTime.toDouble() / hourlyMetric.requestCount else 0.0,
+                                        "maxResponseTime" to hourlyMetric.maxResponseTime,
+                                        "minResponseTime" to if (hourlyMetric.minResponseTime == Long.MAX_VALUE) 0
+                                            else hourlyMetric.minResponseTime,
+                                        "p95ResponseTime" to hourlyMetric.calculate95thPercentile()
+                                    )
+                                }
                             )
                         }
                     }

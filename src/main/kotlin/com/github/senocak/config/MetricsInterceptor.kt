@@ -3,6 +3,7 @@ package com.github.senocak.config
 import com.github.senocak.controller.AppMetricsEndpoint
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.HandlerInterceptor
 import org.springframework.web.method.HandlerMethod
@@ -19,7 +20,7 @@ import org.springframework.web.method.HandlerMethod
  */
 @Component
 class MetricsInterceptor(
-    private val metricsEndpoint: AppMetricsEndpoint
+    @Lazy private val metricsEndpoint: AppMetricsEndpoint
 ) : HandlerInterceptor {
     companion object {
         private const val START_TIME_ATTRIBUTE = "requestStartTime"

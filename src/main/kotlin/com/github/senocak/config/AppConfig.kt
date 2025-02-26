@@ -35,7 +35,8 @@ import java.time.Duration
 @Configuration
 class AppConfig(
     private val authorizationInterceptor: AuthorizationInterceptor,
-    @org.springframework.context.annotation.Lazy private val metricsInterceptor: MetricsInterceptor,
+    private val metricsInterceptor: MetricsInterceptor,
+    private val buildProperties: BuildProperties
 ): WebMvcConfigurer {
     override fun addCorsMappings(registry: CorsRegistry) {
         registry.addMapping("/**")
@@ -76,9 +77,7 @@ class AppConfig(
 
     @Bean
     fun customOpenAPI(
-        @Value("\${spring.application.name}") title: String,
-        @Value("\${server.port}") port: String,
-        @Value("\${springdoc.version}") appVersion: String
+        @Value("\${server.port}") port: String
     ): OpenAPI {
         val securitySchemesItem: SecurityScheme = SecurityScheme()
             .name(SECURITY_SCHEME_NAME)
@@ -87,8 +86,8 @@ class AppConfig(
             .scheme("bearer")
             .`in`(SecurityScheme.In.HEADER)
             .bearerFormat("JWT")
-        val license: Info = Info().title(title).version(appVersion)
-            .description(title)
+        val license: Info = Info().title(buildProperties.name).version(buildProperties.version)
+            .description(buildProperties.name)
             .termsOfService("https://github.com/senocak")
             .license(License().name("Apache 2.0").url("https://springdoc.org"))
         val server1: Server = Server().url("http://localhost:$port/").description("Local Server")
