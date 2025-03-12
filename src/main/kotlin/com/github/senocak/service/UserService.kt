@@ -18,6 +18,9 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.sql.ResultSet
 import javax.sql.DataSource
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
 
 @Service
 class UserService(
@@ -99,15 +102,77 @@ class UserService(
         (SecurityContextHolder.getContext().authentication.principal as org.springframework.security.core.userdetails.User).username
             .run { findByEmail(email = this) }
 
-    val allUsers: List<Any>
-        get() {
-            val sql = "SELECT name, email, password FROM users"
-            return jdbcTemplate!!.query<User>(sql) { rs: ResultSet, rowNum: Int ->
+    fun getUsersWithPagination(page: Int, size: Int, name: String?, email: String?, roleIds: List<String>?,
+                               startDate: String?, endDate: String?, operator: String? = "AND"): Page<User> {
+        val (whereClause: String, params: MutableList<Any>) = buildWhereClause(name = name, email = email, roleIds = roleIds, startDate = startDate,
+            endDate = endDate, operator = operator)
+        // Build the count query
+        val countSql = "SELECT COUNT(DISTINCT u.id) FROM users u LEFT JOIN user_roles ur ON u.id = ur.user_id $whereClause"
+        log.info("Sql statement for count: $countSql")
+        val totalElements = jdbcTemplate!!.queryForObject(countSql, params.toTypedArray(), Long::class.java) ?: 0
+
+        // Build the main query with pagination
+        val sql: String = """
+            SELECT DISTINCT u.id, u.name, u.email, u.password, u.created_at, u.updated_at, u.last_name,
+                   r.name as role_name
+            FROM users u 
+            LEFT JOIN user_roles ur ON u.id = ur.user_id 
+            LEFT JOIN roles r ON ur.role_id = r.id
+            $whereClause 
+            ORDER BY u.created_at DESC
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+        """.trimIndent()
+        params.add(element = page * size)   // OFFSET parameter
+        params.add(element = size)  // FETCH NEXT parameter
+
+        // Create a map to store users and their roles
+        val userMap: MutableMap<String, User> = mutableMapOf()
+        jdbcTemplate!!.query(sql, params.toTypedArray()) { rs: ResultSet, _: Int ->
+            val userId: String = rs.getString("id")
+            val user: User = userMap.getOrPut(key = userId) {
                 User(
                     name = rs.getString("name"),
                     email = rs.getString("email"),
                     password = rs.getString("password")
-                )
+                ).apply {
+                    id = userId
+                    createdAt = rs.getTimestamp("created_at")
+                    updatedAt = rs.getTimestamp("updated_at")
+                    lastName = rs.getString("last_name")
+                    roles = mutableListOf()
+                }
+            }
+            // Add role if it exists
+            rs.getString("role_name")?.let { roleName: String ->
+                val role = Role(name = RoleName.valueOf(roleName))
+                if (!user.roles.any { it.name == role.name })
+                    (user.roles as MutableList<Role>).add(element = role)
             }
         }
+        return PageImpl(userMap.values.toList(), PageRequest.of(page, size), totalElements)
+    }
+
+    private fun buildWhereClause(name: String?, email: String?, roleIds: List<String>?, startDate: String?,
+                                 endDate: String?, operator: String? = "AND"): Pair<String, MutableList<Any>> {
+        val conditions: MutableList<String> = mutableListOf()
+        if (!name.isNullOrBlank())
+            conditions.add("LOWER(u.name) LIKE LOWER(CONCAT('%', ?, '%'))")
+        if (!email.isNullOrBlank())
+            conditions.add("LOWER(u.email) LIKE LOWER(CONCAT('%', ?, '%'))")
+        if (!roleIds.isNullOrEmpty())
+            conditions.add("ur.role_id IN (${roleIds.joinToString(separator = ",") { "?" }})")
+        if (!startDate.isNullOrBlank())
+            conditions.add("u.created_at >= TO_TIMESTAMP(?, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')")
+        if (!endDate.isNullOrBlank())
+            conditions.add("u.created_at <= TO_TIMESTAMP(?, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')")
+        val sql: String =  if (conditions.isEmpty()) "" else "WHERE ${conditions.joinToString(separator = " $operator ")}"
+        val params: MutableList<Any> = mutableListOf()
+        // Add parameters for WHERE clause
+        name?.let { params.add(element = it) }
+        email?.let { params.add(element = it) }
+        roleIds?.forEach { params.add(element = it) }
+        startDate?.let { params.add(element = it) }
+        endDate?.let { params.add(element = it) }
+        return sql to params
+    }
 }

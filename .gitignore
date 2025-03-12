@@ -8,3 +8,5 @@
 **/var/logs/
 **/.DS_STORE
 **/node_modules
+.gradle/
+**/.gradle/

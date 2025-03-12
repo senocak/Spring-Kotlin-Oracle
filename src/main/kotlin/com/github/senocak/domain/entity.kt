@@ -28,10 +28,10 @@ import java.util.UUID
 open class BaseDomain(
     @Id
     //@GeneratedValue(generator = "UUID")
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @GenericGenerator(name = "UUID", strategy = "org.hibernate.id.UUIDGenerator")
+    //@GeneratedValue(strategy = GenerationType.UUID)
+    //@GenericGenerator(name = "UUID", strategy = "org.hibernate.id.UUIDGenerator")
     @Column(name = "id", updatable = false, nullable = false)
-    var id: UUID? = null,
+    var id: String? = null,
     @Column var createdAt: Date = Date(),
     @Column var updatedAt: Date = Date()
 ) : Serializable

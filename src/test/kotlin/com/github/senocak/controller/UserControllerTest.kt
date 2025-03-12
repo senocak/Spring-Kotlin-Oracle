@@ -11,6 +11,23 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.BeforeEach
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.http.MediaType
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
+import org.mockito.Mockito.`when`
+import org.mockito.ArgumentMatchers.eq
+import org.mockito.ArgumentMatchers.isNull
+import org.mockito.ArgumentMatchers.any
+import com.github.senocak.domain.Role
+import com.github.senocak.util.RoleName
+import com.github.senocak.exception.RestExceptionHandler
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.function.Executable
 import org.mockito.Mockito
@@ -38,7 +55,7 @@ class UserControllerTest {
 
     @Nested
     internal inner class GetMeTest {
-        
+
         @Test
         @Throws(ServerException::class)
         fun givenServerException_whenGetMe_thenThrowServerException() {
@@ -110,6 +127,81 @@ class UserControllerTest {
             assertNotNull(patchMe)
             assertEquals(user.email, patchMe.email)
             assertEquals(user.name, patchMe.name)
+        }
+    }
+
+    @Nested
+    internal inner class GetUserByTemplateTest {
+        private lateinit var mockMvc: MockMvc
+
+        @BeforeEach
+        fun setup() {
+            userController = UserController(userService, passwordEncoder)
+            mockMvc = MockMvcBuilders.standaloneSetup(userController)
+                .setControllerAdvice(RestExceptionHandler())
+                .build()
+        }
+
+        @Test
+        fun `given_whenGetUserByTemplate_thenReturn200`() {
+            // Given
+            val testUser = User(name = "Test User", email = "test@test.com", password = "password")
+            val role = Role(name = RoleName.ROLE_USER)
+            testUser.roles = listOf(role)
+
+            val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
+            `when`(userService.getUsersWithPagination(
+                eq(0),
+                eq(10),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull()
+            )).thenReturn(page)
+
+            // When
+            mockMvc.perform(
+                get("${BaseController.V1_USER_URL}?page=0&size=10")
+                    .header("X-API-VERSION", "template")
+                    .contentType(MediaType.APPLICATION_JSON)
+            )
+            // Then
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.page").value(1))  // PaginationResponse uses 1-based page numbers
+                .andExpect(jsonPath("$.pages").value(1))  // Total number of pages
+                .andExpect(jsonPath("$.total").value(1))  // Total number of elements
+                .andExpect(jsonPath("$.items[0].name").value("Test User"))
+                .andExpect(jsonPath("$.items[0].email").value("test@test.com"))
+        }
+
+        @Test
+        fun `givenFilters_whenGetUserByTemplate_thenReturnFilteredResults`() {
+            // Given
+            val testUser = User(name = "Test User", email = "test@test.com", password = "password")
+            val role = Role(name = RoleName.ROLE_USER)
+            testUser.roles = listOf(role)
+
+            val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
+            `when`(userService.getUsersWithPagination(
+                eq(0), 
+                eq(10), 
+                eq("Test"), 
+                eq("Test"), 
+                any(), 
+                eq("2024-01-01T00:00:00.000Z"), 
+                eq("2024-12-31T23:59:59.999Z")
+            )).thenReturn(page)
+
+            // When
+            mockMvc.perform(
+                get("${BaseController.V1_USER_URL}?page=0&size=10&q=Test&startDate=2024-01-01T00:00:00.000Z&endDate=2024-12-31T23:59:59.999Z")
+                    .header("X-API-VERSION", "template")
+                    .contentType(MediaType.APPLICATION_JSON)
+            )
+            // Then
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.items[0].name").value("Test User"))
         }
     }
 }
