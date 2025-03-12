@@ -128,16 +128,13 @@ class UserController(
         @Parameter(name = "size", description = "Page size", example = DEFAULT_PAGE_SIZE) @RequestParam(defaultValue = "\${spring.data.web.pageable.default-page-size:10}", required = false) size: Int,
         @Parameter(name = "q", description = "Search keyword", example = "lorem") @RequestParam(required = false) q: String?,
         @Parameter(name = "roleIds", description = "List of role ids", example = "12b9374e-4e52-4142-a1af-16144ef4a27d") @RequestParam(required = false) roleIds: List<String>?,
-        @Parameter(name = "startDate", description = "Date range start", example = "2024-01-15T00:00:00.000Z") @RequestParam(required = false) startDate: String?,
-        @Parameter(name = "endDate", description = "Date range end", example = "2024-03-15T23:59:59.999Z") @RequestParam(required = false) endDate: String?,
         @Parameter(name = "operator", description = "Date range end", example = "AND") @RequestParam(required = false, defaultValue = "AND") operator: String? = "AND",
     ): UserPaginationDTO = run {
-        val usersPage: Page<User> = userService.getUsersWithPagination(page = page, size = size, name = q, email = q,
-            roleIds = roleIds, startDate = startDate, endDate = endDate, operator = operator)
-        val userResponses = usersPage.content.map { user -> user.convertEntityToDto() }
+        val usersPage: Page<User> = userService.getUsersWithPagination(page = page, size = size, name = q,
+            email = q, roleIds = roleIds, operator = operator)
         UserPaginationDTO(
             pageModel = usersPage,
-            items = userResponses,
+            items = usersPage.content.map { user: User -> user.convertEntityToDto() },
             sortBy = "createdAt",
             sort = "desc"
         )

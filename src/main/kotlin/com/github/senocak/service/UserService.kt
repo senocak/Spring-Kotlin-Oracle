@@ -102,10 +102,8 @@ class UserService(
         (SecurityContextHolder.getContext().authentication.principal as org.springframework.security.core.userdetails.User).username
             .run { findByEmail(email = this) }
 
-    fun getUsersWithPagination(page: Int, size: Int, name: String?, email: String?, roleIds: List<String>?,
-                               startDate: String?, endDate: String?, operator: String? = "AND"): Page<User> {
-        val (whereClause: String, params: MutableList<Any>) = buildWhereClause(name = name, email = email, roleIds = roleIds, startDate = startDate,
-            endDate = endDate, operator = operator)
+    fun getUsersWithPagination(page: Int, size: Int, name: String?, email: String?, roleIds: List<String>?, operator: String? = "AND"): Page<User> {
+        val (whereClause: String, params: MutableList<Any>) = buildWhereClause(name = name, email = email, roleIds = roleIds, operator = operator)
         // Build the count query
         val countSql = "SELECT COUNT(DISTINCT u.id) FROM users u LEFT JOIN user_roles ur ON u.id = ur.user_id $whereClause"
         log.info("Sql statement for count: $countSql")
@@ -152,8 +150,7 @@ class UserService(
         return PageImpl(userMap.values.toList(), PageRequest.of(page, size), totalElements)
     }
 
-    private fun buildWhereClause(name: String?, email: String?, roleIds: List<String>?, startDate: String?,
-                                 endDate: String?, operator: String? = "AND"): Pair<String, MutableList<Any>> {
+    private fun buildWhereClause(name: String?, email: String?, roleIds: List<String>?, operator: String? = "AND"): Pair<String, MutableList<Any>> {
         val conditions: MutableList<String> = mutableListOf()
         if (!name.isNullOrBlank())
             conditions.add("LOWER(u.name) LIKE LOWER(CONCAT('%', ?, '%'))")
@@ -161,18 +158,12 @@ class UserService(
             conditions.add("LOWER(u.email) LIKE LOWER(CONCAT('%', ?, '%'))")
         if (!roleIds.isNullOrEmpty())
             conditions.add("ur.role_id IN (${roleIds.joinToString(separator = ",") { "?" }})")
-        if (!startDate.isNullOrBlank())
-            conditions.add("u.created_at >= TO_TIMESTAMP(?, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')")
-        if (!endDate.isNullOrBlank())
-            conditions.add("u.created_at <= TO_TIMESTAMP(?, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')")
         val sql: String =  if (conditions.isEmpty()) "" else "WHERE ${conditions.joinToString(separator = " $operator ")}"
         val params: MutableList<Any> = mutableListOf()
         // Add parameters for WHERE clause
         name?.let { params.add(element = it) }
         email?.let { params.add(element = it) }
         roleIds?.forEach { params.add(element = it) }
-        startDate?.let { params.add(element = it) }
-        endDate?.let { params.add(element = it) }
         return sql to params
     }
 }
