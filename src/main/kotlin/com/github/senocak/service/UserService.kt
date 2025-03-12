@@ -5,7 +5,9 @@ import com.github.senocak.domain.User
 import com.github.senocak.domain.UserRepository
 import com.github.senocak.exception.ServerException
 import com.github.senocak.util.RoleName
+import com.github.senocak.util.logger
 import jakarta.annotation.PostConstruct
+import org.slf4j.Logger
 import org.springframework.jdbc.core.support.JdbcDaoSupport
 import org.springframework.security.core.GrantedAuthority
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -20,13 +22,19 @@ import javax.sql.DataSource
 @Service
 class UserService(
     private val userRepository: UserRepository,
-    private val dataSource: DataSource
+    private val dataSource: DataSource,
+    private val cacheService: CacheService
 ): UserDetailsService, JdbcDaoSupport() {
+    private val log: Logger by logger()
+
+    companion object {
+        private const val USER_CACHE_KEY = "user:"
+    }
 
     @PostConstruct
     fun initialize() {
         setDataSource(dataSource)
-        println("Datasource used: $dataSource")
+        log.info("Datasource used: $dataSource")
     }
 
     fun findAll(): MutableIterable<User> = userRepository.findAll()
@@ -45,15 +53,28 @@ class UserService(
      */
     @Throws(UsernameNotFoundException::class)
     fun findByEmail(email: String): User =
-        userRepository.findByEmail(email = email) ?: throw UsernameNotFoundException("user_not_found")
+        cacheService.getOrSet(key = email, prefix = USER_CACHE_KEY, clazz = User::class.java) {
+            userRepository.findByEmail(email = email) ?: throw UsernameNotFoundException("user_not_found")
+        }
 
     /**
      * @param user -- User object to persist to db
      * @return -- User object that is persisted to db
      */
-    fun save(user: User): User = userRepository.save(user)
+    fun save(user: User): User {
+        val savedUser: User = userRepository.save(user)
+        // Invalidate cache for the user's email
+        user.email?.let { email ->
+            cacheService.invalidate(key = email, prefix = USER_CACHE_KEY)
+        }
+        return savedUser
+    }
 
-    fun deleteAllUsers() = userRepository.deleteAll()
+    fun deleteAllUsers() {
+        userRepository.deleteAll()
+        // Clear all user caches
+        cacheService.invalidatePattern(pattern = "${USER_CACHE_KEY}*")
+    }
 
     /**
      * @param email -- id

@@ -18,6 +18,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.any
+import org.mockito.Mockito.verify
+import org.mockito.Mockito.never
 import javax.sql.DataSource
 import org.springframework.security.core.userdetails.User as SecurityUser
 
@@ -29,7 +32,12 @@ class UserServiceTest {
     private var auth: Authentication = Mockito.mock(Authentication::class.java)
     private var securityUser: SecurityUser = Mockito.mock(SecurityUser::class.java)
     private var dataSource: DataSource = Mockito.mock(DataSource::class.java)
-    private val userService: UserService = UserService(userRepository = userRepository, dataSource = dataSource)
+    private val cacheService: CacheService = Mockito.mock(CacheService::class.java)
+    private val userService: UserService = UserService(
+        userRepository = userRepository,
+        dataSource = dataSource,
+        cacheService = cacheService
+    )
 
     private val user: User = createTestUser()
 
@@ -114,7 +122,6 @@ class UserServiceTest {
     }
 
     @Test
-    @Throws(UsernameNotFoundException::class)
     fun givenLoggedIn_whenLoadUserByUsername_thenAssertResult() {
         // Given
         SecurityContextHolder.getContext().authentication = auth
@@ -126,5 +133,51 @@ class UserServiceTest {
         val loggedInUser: User = userService.loggedInUser()
         // Then
         assertEquals(user.email, loggedInUser.email)
+    }
+
+    @Test
+    fun `should return user from cache when available`() {
+        // Given
+        val email = "test@example.com"
+        val user = createTestUser()
+        doReturn(user).`when`(cacheService).getOrSet(
+            key = email,
+            prefix = "user:",
+            clazz = User::class.java,
+            loader = any()
+        )
+
+        // When
+        val result = userService.findByEmail(email)
+
+        // Then
+        assertEquals(user, result)
+        verify(userRepository, never()).findByEmail(email)
+    }
+
+    @Test
+    fun `should invalidate cache when user is saved`() {
+        // Given
+        val user = createTestUser()
+        doReturn(user).`when`(userRepository).save(user)
+
+        // When
+        userService.save(user)
+
+        // Then
+        verify(cacheService).invalidate(
+            key = user.email!!,
+            prefix = "user:"
+        )
+    }
+
+    @Test
+    fun `should clear all user caches when deleting all users`() {
+        // When
+        userService.deleteAllUsers()
+
+        // Then
+        verify(userRepository).deleteAll()
+        verify(cacheService).invalidatePattern("user:*")
     }
 }

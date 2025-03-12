@@ -45,7 +45,6 @@ app:
 springdoc:
   api-docs:
     path: /api/v1/swagger
-  version: 1
 logging:
   level:
     org:

@@ -8,6 +8,16 @@ object AppConstants {
     const val ADMIN = "ADMIN"
     const val USER = "USER"
     const val SECURITY_SCHEME_NAME = "bearerAuth"
+
+    object Cache {
+        const val PREFIX = "cache:"
+        const val USER_PREFIX = "${PREFIX}user:"
+        const val ROLE_PREFIX = "${PREFIX}role:"
+        const val CONFIG_PREFIX = "${PREFIX}config:"
+        const val STATS_PREFIX = "${PREFIX}stats:"
+        const val DEFAULT_TTL = 3600L // 1 hour
+        const val MAX_CACHE_SIZE = 10000L
+    }
 }
 
 class RandomStringGenerator(

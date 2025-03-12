@@ -2,10 +2,12 @@ package com.github.senocak.domain.dto
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import com.github.senocak.domain.User
 import com.github.senocak.util.validation.PasswordMatches
 import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Size
+import org.springframework.data.domain.Page
 
 @JsonPropertyOrder("name", "username", "email", "roles", "resourceUrl")
 class UserResponse(
@@ -36,3 +38,10 @@ data class UpdateUserDto(
     @Schema(example = "Anil123", description = "Password confirmation", required = true, name = "password", type = "String")
     var passwordConfirmation: String? = null
 ): BaseDto()
+
+class UserPaginationDTO(
+    pageModel: Page<User>,
+    items: List<UserResponse>,
+    sortBy: String? = null,
+    sort: String? = null
+): PaginationResponse<User, UserResponse>(page = pageModel, items = items, sortBy = sortBy, sort = sort)
