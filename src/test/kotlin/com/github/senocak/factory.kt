@@ -12,7 +12,7 @@ import java.util.UUID
 fun createTestUser(): User =
     User(name = USER_NAME, email = USER_EMAIL, password = USER_PASSWORD)
         .also { it: User ->
-            it.id = UUID.randomUUID()
+            it.id = UUID.randomUUID().toString()
             it.roles = arrayListOf<Role>()
                 .also { list: ArrayList<Role> -> list.add(element = createRole(RoleName.ROLE_USER)) }
                 .also { list: ArrayList<Role> -> list.add(element = createRole(RoleName.ROLE_ADMIN)) }
@@ -20,4 +20,4 @@ fun createTestUser(): User =
 
 fun createRole(role: RoleName? = RoleName.ROLE_USER): Role =
     Role(name = role)
-        .also { it: Role -> it.id = UUID.randomUUID() }
+        .also { it: Role -> it.id = UUID.randomUUID().toString() }

@@ -150,15 +150,8 @@ class UserControllerTest {
             testUser.roles = listOf(role)
 
             val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
-            `when`(userService.getUsersWithPagination(
-                eq(0),
-                eq(10),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull(),
-                isNull()
-            )).thenReturn(page)
+            Mockito.`when`(userService.getUsersWithPagination(0, 10, null, null, null, "AND"))
+                .thenReturn(page)
 
             // When
             mockMvc.perform(
@@ -183,20 +176,137 @@ class UserControllerTest {
             testUser.roles = listOf(role)
 
             val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
-            `when`(userService.getUsersWithPagination(
-                eq(0), 
-                eq(10), 
-                eq("Test"), 
-                eq("Test"), 
-                any(), 
-                eq("2024-01-01T00:00:00.000Z"), 
-                eq("2024-12-31T23:59:59.999Z")
-            )).thenReturn(page)
+            Mockito.`when`(userService.getUsersWithPagination(0, 10, "Test", "Test", null, "AND"))
+                .thenReturn(page)
 
             // When
             mockMvc.perform(
-                get("${BaseController.V1_USER_URL}?page=0&size=10&q=Test&startDate=2024-01-01T00:00:00.000Z&endDate=2024-12-31T23:59:59.999Z")
+                get("${BaseController.V1_USER_URL}?page=0&size=10&q=Test")
                     .header("X-API-VERSION", "template")
+                    .contentType(MediaType.APPLICATION_JSON)
+            )
+            // Then
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.items[0].name").value("Test User"))
+        }
+    }
+
+    @Nested
+    internal inner class GetAllUsersTest {
+        private lateinit var mockMvc: MockMvc
+
+        @BeforeEach
+        fun setup() {
+            userController = UserController(userService, passwordEncoder)
+            mockMvc = MockMvcBuilders.standaloneSetup(userController)
+                .setControllerAdvice(RestExceptionHandler())
+                .build()
+        }
+
+        @Test
+        fun `given_whenGetAllUsers_thenReturn200`() {
+            // Given
+            val testUser = User(name = "Test User", email = "test@test.com", password = "password")
+            val role = Role(name = RoleName.ROLE_USER)
+            testUser.roles = listOf(role)
+
+            val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
+            Mockito.`when`(userService.getUsersWithPagination(0, 10, null, null, null, "AND"))
+                .thenReturn(page)
+
+            // When
+            mockMvc.perform(
+                get("${BaseController.V1_USER_URL}?page=0&size=10")
+                    .header("X-API-VERSION", "jdbc")
+                    .contentType(MediaType.APPLICATION_JSON)
+            )
+            // Then
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.pages").value(1))
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].name").value("Test User"))
+                .andExpect(jsonPath("$.items[0].email").value("test@test.com"))
+        }
+
+        @Test
+        fun `givenFilters_whenGetAllUsers_thenReturnFilteredResults`() {
+            // Given
+            val testUser = User(name = "Test User", email = "test@test.com", password = "password")
+            val role = Role(name = RoleName.ROLE_USER)
+            testUser.roles = listOf(role)
+
+            val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
+            val roleIds = listOf("role-id-1")
+            Mockito.`when`(userService.getUsersWithPagination(0, 10, "Test", "Test", roleIds, "OR"))
+                .thenReturn(page)
+
+            // When
+            mockMvc.perform(
+                get("${BaseController.V1_USER_URL}?page=0&size=10&q=Test&roleIds=role-id-1&operator=OR")
+                    .header("X-API-VERSION", "jdbc")
+                    .contentType(MediaType.APPLICATION_JSON)
+            )
+            // Then
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.items[0].name").value("Test User"))
+                .andExpect(jsonPath("$.items[0].email").value("test@test.com"))
+        }
+    }
+
+    @Nested
+    internal inner class GetUserByJdbcClientTest {
+        private lateinit var mockMvc: MockMvc
+
+        @BeforeEach
+        fun setup() {
+            userController = UserController(userService, passwordEncoder)
+            mockMvc = MockMvcBuilders.standaloneSetup(userController)
+                .setControllerAdvice(RestExceptionHandler())
+                .build()
+        }
+
+        @Test
+        fun `given_whenGetUserByJdbcClient_thenReturn200`() {
+            // Given
+            val testUser = User(name = "Test User", email = "test@test.com", password = "password")
+            val role = Role(name = RoleName.ROLE_USER)
+            testUser.roles = listOf(role)
+
+            val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
+            Mockito.`when`(userService.getUsersWithJdbcClient(0, 10, null, null, null, "AND"))
+                .thenReturn(page)
+
+            // When
+            mockMvc.perform(
+                get("${BaseController.V1_USER_URL}?page=0&size=10")
+                    .header("X-API-VERSION", "client")
+                    .contentType(MediaType.APPLICATION_JSON)
+            )
+            // Then
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.page").value(1))  // PaginationResponse uses 1-based page numbers
+                .andExpect(jsonPath("$.pages").value(1))  // Total number of pages
+                .andExpect(jsonPath("$.total").value(1))  // Total number of elements
+                .andExpect(jsonPath("$.items[0].name").value("Test User"))
+                .andExpect(jsonPath("$.items[0].email").value("test@test.com"))
+        }
+
+        @Test
+        fun `givenFilters_whenGetUserByJdbcClient_thenReturnFilteredResults`() {
+            // Given
+            val testUser = User(name = "Test User", email = "test@test.com", password = "password")
+            val role = Role(name = RoleName.ROLE_USER)
+            testUser.roles = listOf(role)
+
+            val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
+            Mockito.`when`(userService.getUsersWithJdbcClient(0, 10, "Test", "Test", null, "AND"))
+                .thenReturn(page)
+
+            // When
+            mockMvc.perform(
+                get("${BaseController.V1_USER_URL}?page=0&size=10&q=Test")
+                    .header("X-API-VERSION", "client")
                     .contentType(MediaType.APPLICATION_JSON)
             )
             // Then

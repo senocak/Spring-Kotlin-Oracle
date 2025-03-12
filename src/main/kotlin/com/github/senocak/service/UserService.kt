@@ -9,6 +9,7 @@ import com.github.senocak.util.logger
 import jakarta.annotation.PostConstruct
 import org.slf4j.Logger
 import org.springframework.jdbc.core.support.JdbcDaoSupport
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.core.GrantedAuthority
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -26,13 +27,11 @@ import org.springframework.data.domain.PageRequest
 class UserService(
     private val userRepository: UserRepository,
     private val dataSource: DataSource,
-    private val cacheService: CacheService
+    private val cacheService: CacheService,
+    private val jdbcClient: JdbcClient
 ): UserDetailsService, JdbcDaoSupport() {
     private val log: Logger by logger()
-
-    companion object {
-        private const val USER_CACHE_KEY = "user:"
-    }
+    private val userCacheKey = "user:"
 
     @PostConstruct
     fun initialize() {
@@ -56,7 +55,7 @@ class UserService(
      */
     @Throws(UsernameNotFoundException::class)
     fun findByEmail(email: String): User =
-        cacheService.getOrSet(key = email, prefix = USER_CACHE_KEY, clazz = User::class.java) {
+        cacheService.getOrSet(key = email, prefix = userCacheKey, clazz = User::class.java) {
             userRepository.findByEmail(email = email) ?: throw UsernameNotFoundException("user_not_found")
         }
 
@@ -68,7 +67,7 @@ class UserService(
         val savedUser: User = userRepository.save(user)
         // Invalidate cache for the user's email
         user.email?.let { email ->
-            cacheService.invalidate(key = email, prefix = USER_CACHE_KEY)
+            cacheService.invalidate(key = email, prefix = userCacheKey)
         }
         return savedUser
     }
@@ -76,7 +75,7 @@ class UserService(
     fun deleteAllUsers() {
         userRepository.deleteAll()
         // Clear all user caches
-        cacheService.invalidatePattern(pattern = "${USER_CACHE_KEY}*")
+        cacheService.invalidatePattern(pattern = "${userCacheKey}*")
     }
 
     /**
@@ -153,17 +152,73 @@ class UserService(
     private fun buildWhereClause(name: String?, email: String?, roleIds: List<String>?, operator: String? = "AND"): Pair<String, MutableList<Any>> {
         val conditions: MutableList<String> = mutableListOf()
         if (!name.isNullOrBlank())
-            conditions.add("LOWER(u.name) LIKE LOWER(CONCAT('%', ?, '%'))")
+            conditions.add(element = "LOWER(u.name) LIKE LOWER(CONCAT('%', ?, '%'))")
         if (!email.isNullOrBlank())
-            conditions.add("LOWER(u.email) LIKE LOWER(CONCAT('%', ?, '%'))")
+            conditions.add(element = "LOWER(u.email) LIKE LOWER(CONCAT('%', ?, '%'))")
         if (!roleIds.isNullOrEmpty())
-            conditions.add("ur.role_id IN (${roleIds.joinToString(separator = ",") { "?" }})")
-        val sql: String =  if (conditions.isEmpty()) "" else "WHERE ${conditions.joinToString(separator = " $operator ")}"
+            conditions.add(element = "ur.role_id IN (${roleIds.joinToString(separator = ",") { "?" }})")
+        val sql: String = when {
+            conditions.isEmpty() -> ""
+            else -> "WHERE ${conditions.joinToString(separator = " $operator ")}"
+        }
         val params: MutableList<Any> = mutableListOf()
         // Add parameters for WHERE clause
         name?.let { params.add(element = it) }
         email?.let { params.add(element = it) }
         roleIds?.forEach { params.add(element = it) }
         return sql to params
+    }
+
+    fun getUsersWithJdbcClient(page: Int, size: Int, name: String?, email: String?, roleIds: List<String>?, operator: String? = "AND"): Page<User> {
+        val (whereClause: String, params: MutableList<Any>) = buildWhereClause(name = name, email = email, roleIds = roleIds, operator = operator)
+        // Build the count query
+        val countSql = "SELECT COUNT(DISTINCT u.id) FROM users u LEFT JOIN user_roles ur ON u.id = ur.user_id $whereClause"
+        log.info("Sql statement for count: $countSql")
+        val totalElements: Long = jdbcClient.sql(countSql)
+            .params(params)
+            .query(Long::class.java)
+            .single()
+
+        // Build the main query with pagination
+        val sql: String = """ SELECT DISTINCT u.id, u.name, u.email, u.password, u.created_at, u.updated_at, u.last_name, r.name as role_name
+            FROM users u 
+            LEFT JOIN user_roles ur ON u.id = ur.user_id 
+            LEFT JOIN roles r ON ur.role_id = r.id
+            $whereClause 
+            ORDER BY u.created_at DESC
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+        """.trimIndent()
+        params.add(element = page * size)   // OFFSET parameter
+        params.add(element = size)         // FETCH NEXT parameter
+
+        // Create a map to store users and their roles
+        val userMap: MutableMap<String, User> = mutableMapOf()
+        jdbcClient.sql(sql)
+            .params(params)
+            .query { rs: ResultSet, _: Int ->
+                val userId: String = rs.getString("id")
+                val user: User = userMap.getOrPut(userId) {
+                    User(
+                        name = rs.getString("name"),
+                        email = rs.getString("email"),
+                        password = rs.getString("password")
+                    ).apply {
+                        id = userId
+                        createdAt = rs.getTimestamp("created_at")
+                        updatedAt = rs.getTimestamp("updated_at")
+                        lastName = rs.getString("last_name")
+                        roles = mutableListOf()
+                    }
+                }
+                // Add role if it exists
+                rs.getString("role_name")?.let { roleName: String ->
+                    val role = Role(name = RoleName.valueOf(value = roleName))
+                    if (!user.roles.any { it.name == role.name })
+                        (user.roles as MutableList<Role>).add(element = role)
+                }
+                user
+            }
+            .list()
+        return PageImpl(userMap.values.toList(), PageRequest.of(page, size), totalElements)
     }
 }

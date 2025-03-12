@@ -17,11 +17,18 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.mockito.Mockito.`when`
-import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.whenever
 import org.mockito.kotlin.any
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.never
+import org.mockito.kotlin.doReturn
+import org.mockito.ArgumentMatchers.eq
 import javax.sql.DataSource
+import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
+import org.springframework.jdbc.core.RowMapper
 import org.springframework.security.core.userdetails.User as SecurityUser
 
 @Tag("unit")
@@ -33,10 +40,12 @@ class UserServiceTest {
     private var securityUser: SecurityUser = Mockito.mock(SecurityUser::class.java)
     private var dataSource: DataSource = Mockito.mock(DataSource::class.java)
     private val cacheService: CacheService = Mockito.mock(CacheService::class.java)
+    private val jdbcClient: JdbcClient = Mockito.mock(JdbcClient::class.java)
     private val userService: UserService = UserService(
         userRepository = userRepository,
         dataSource = dataSource,
-        cacheService = cacheService
+        cacheService = cacheService,
+        jdbcClient = jdbcClient
     )
 
     private val user: User = createTestUser()
@@ -53,7 +62,9 @@ class UserServiceTest {
     fun givenEmail_whenFindByEmail_thenAssertResult() {
         // Given
         val user: User = createTestUser()
-        doReturn(value = user).`when`(userRepository).findByEmail(email = "email")
+        doReturn(user)
+            .`when`(cacheService)
+            .getOrSet(any(), any(), any(), any())
         // When
         val findByUsername: User = userService.findByEmail(email = "email")
         // Then
@@ -62,6 +73,13 @@ class UserServiceTest {
 
     @Test
     fun givenNullEmail_whenFindByEmail_thenAssertResult() {
+        // Given
+        whenever(cacheService.getOrSet(
+            key = eq("email"),
+            prefix = eq("user:"),
+            clazz = eq(User::class.java),
+            loader = any()
+        )).thenReturn(null)
         // When
         val closureToTest = Executable { userService.findByEmail(email = "email") }
         // Then
@@ -72,7 +90,7 @@ class UserServiceTest {
     fun givenUser_whenSave_thenAssertResult() {
         // Given
         val user: User = createTestUser()
-        doReturn(value = user).`when`(userRepository).save<User>(user)
+        whenever(userRepository.save(user)).thenReturn(user)
         // When
         val save: User = userService.save(user)
         // Then
@@ -83,7 +101,7 @@ class UserServiceTest {
     fun givenUser_whenCreate_thenAssertResult() {
         // Given
         val user: User = createTestUser()
-        `when`(userRepository.save(user)).thenReturn(user)
+        whenever(userRepository.save(user)).thenReturn(user)
         // When
         val create: User = userService.save(user)
         // Then
@@ -92,6 +110,13 @@ class UserServiceTest {
 
     @Test
     fun givenNullUsername_whenLoadUserByUsername_thenAssertResult() {
+        // Given
+        whenever(cacheService.getOrSet(
+            key = eq("username"),
+            prefix = eq("user:"),
+            clazz = eq(User::class.java),
+            loader = any()
+        )).thenReturn(null)
         // When
         val closureToTest = Executable { userService.loadUserByUsername("username") }
         // Then
@@ -102,7 +127,14 @@ class UserServiceTest {
     fun givenUsername_whenLoadUserByUsername_thenAssertResult() {
         // Given
         val user: User = createTestUser()
-        doReturn(value = user).`when`(userRepository).findByEmail(email = "email")
+        doReturn(user)
+            .`when`(cacheService)
+            .getOrSet<User>(
+                key = any(),
+                prefix = any(),
+                clazz = any(),
+                loader = any()
+            )
         // When
         val loadUserByUsername: org.springframework.security.core.userdetails.User = userService.loadUserByUsername(email = "email")
         // Then
@@ -113,8 +145,14 @@ class UserServiceTest {
     fun givenNotLoggedIn_whenLoadUserByUsername_thenAssertResult() {
         // Given
         SecurityContextHolder.getContext().authentication = auth
-        doReturn(value = securityUser).`when`(auth).principal
-        doReturn(value = "user").`when`(securityUser).username
+        whenever(auth.principal).thenReturn(securityUser)
+        whenever(securityUser.username).thenReturn("user")
+        whenever(cacheService.getOrSet(
+            key = eq("user"),
+            prefix = eq("user:"),
+            clazz = eq(User::class.java),
+            loader = any()
+        )).thenReturn(null)
         // When
         val closureToTest = Executable { userService.loggedInUser() }
         // Then
@@ -125,10 +163,15 @@ class UserServiceTest {
     fun givenLoggedIn_whenLoadUserByUsername_thenAssertResult() {
         // Given
         SecurityContextHolder.getContext().authentication = auth
-        doReturn(value = securityUser).`when`(auth).principal
-        doReturn(value = "email").`when`(securityUser).username
+        whenever(auth.principal).thenReturn(securityUser)
+        whenever(securityUser.username).thenReturn("email")
         val user: User = createTestUser()
-        doReturn(value = user).`when`(userRepository).findByEmail(email = "email")
+        whenever(cacheService.getOrSet(
+            key = eq("email"),
+            prefix = eq("user:"),
+            clazz = eq(User::class.java),
+            loader = any()
+        )).thenReturn(user)
         // When
         val loggedInUser: User = userService.loggedInUser()
         // Then
@@ -179,5 +222,68 @@ class UserServiceTest {
         // Then
         verify(userRepository).deleteAll()
         verify(cacheService).invalidatePattern("user:*")
+    }
+
+    @Test
+    fun `should return paginated users with JdbcClient`() {
+        // Given
+        val testUser = createTestUser()
+        val page = 0
+        val size = 10
+
+        // Mock the count query
+        val mockStatementSpec = Mockito.mock(JdbcClient.StatementSpec::class.java)
+        doReturn(mockStatementSpec).`when`(jdbcClient).sql(any())
+        doReturn(mockStatementSpec).`when`(mockStatementSpec).params(any<Array<Any>>())
+        doReturn(1L).`when`(mockStatementSpec).query(Long::class.java).single()
+
+        // Mock the main query
+        doReturn(listOf(testUser)).`when`(mockStatementSpec).query(any<RowMapper<User>>()).list()
+
+        // When
+        val result = userService.getUsersWithJdbcClient(
+            page = page,
+            size = size,
+            name = null,
+            email = null,
+            roleIds = null
+        )
+
+        // Then
+        assertEquals(1, result.totalElements)
+        assertEquals(1, result.content.size)
+        assertEquals(testUser, result.content[0])
+    }
+
+    @Test
+    fun `should return filtered users with JdbcClient`() {
+        // Given
+        val testUser = createTestUser()
+        val page = 0
+        val size = 10
+        val searchTerm = "test"
+
+        // Mock the count query
+        val mockStatementSpec = Mockito.mock(JdbcClient.StatementSpec::class.java)
+        doReturn(mockStatementSpec).`when`(jdbcClient).sql(any())
+        doReturn(mockStatementSpec).`when`(mockStatementSpec).params(any<Array<Any>>())
+        doReturn(1L).`when`(mockStatementSpec).query(Long::class.java).single()
+
+        // Mock the main query
+        doReturn(listOf(testUser)).`when`(mockStatementSpec).query(any<RowMapper<User>>()).list()
+
+        // When
+        val result = userService.getUsersWithJdbcClient(
+            page = page,
+            size = size,
+            name = searchTerm,
+            email = searchTerm,
+            roleIds = null
+        )
+
+        // Then
+        assertEquals(1, result.totalElements)
+        assertEquals(1, result.content.size)
+        assertEquals(testUser, result.content[0])
     }
 }

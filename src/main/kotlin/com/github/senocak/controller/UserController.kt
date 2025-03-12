@@ -139,4 +139,35 @@ class UserController(
             sort = "desc"
         )
     }
+
+    @Throws(ServerException::class)
+    @Authorize(roles = [ADMIN])
+    @GetMapping(headers = ["X-API-VERSION=client"])
+    @Operation(
+        summary = "All Users using JdbcClient",
+        tags = ["User"],
+        responses = [
+            ApiResponse(responseCode = "200", description = MediaType.APPLICATION_JSON_VALUE,
+                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = UserPaginationDTO::class)))),
+            ApiResponse(responseCode = "500", description = "internal server error occurred",
+                content = arrayOf(Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = ExceptionDto::class))))
+        ],
+        security = [SecurityRequirement(name = SECURITY_SCHEME_NAME, scopes = [ADMIN])]
+    )
+    fun getUserByJdbcClient(
+        @Parameter(name = "page", description = "Page number", example = DEFAULT_PAGE_NUMBER) @RequestParam(defaultValue = "0", required = false) page: Int,
+        @Parameter(name = "size", description = "Page size", example = DEFAULT_PAGE_SIZE) @RequestParam(defaultValue = "\${spring.data.web.pageable.default-page-size:10}", required = false) size: Int,
+        @Parameter(name = "q", description = "Search keyword", example = "lorem") @RequestParam(required = false) q: String?,
+        @Parameter(name = "roleIds", description = "List of role ids", example = "12b9374e-4e52-4142-a1af-16144ef4a27d") @RequestParam(required = false) roleIds: List<String>?,
+        @Parameter(name = "operator", description = "Logical operator for conditions (AND/OR)", example = "AND") @RequestParam(required = false, defaultValue = "AND") operator: String? = "AND",
+    ): UserPaginationDTO = run {
+        val usersPage: Page<User> = userService.getUsersWithJdbcClient(page = page, size = size, name = q,
+            email = q, roleIds = roleIds, operator = operator)
+        UserPaginationDTO(
+            pageModel = usersPage,
+            items = usersPage.content.map { user: User -> user.convertEntityToDto() },
+            sortBy = "createdAt",
+            sort = "desc"
+        )
+    }
 }
