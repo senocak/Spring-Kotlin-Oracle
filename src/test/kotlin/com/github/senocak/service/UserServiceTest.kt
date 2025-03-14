@@ -29,6 +29,7 @@ import org.springframework.data.domain.Page
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.mockito.Mockito.lenient
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import java.sql.ResultSet
@@ -154,18 +155,31 @@ class UserServiceTest {
     @Test
     fun `should return users with JdbcClient`() {
         // Given
-        val statementSpec: JdbcClient.StatementSpec = mock<JdbcClient.StatementSpec>()
-        val mappedQuerySpec: JdbcClient.MappedQuerySpec<Long> = mock<JdbcClient.MappedQuerySpec<Long>>()
-        whenever(methodCall = jdbcClient.sql(anyString())).thenReturn(statementSpec)
-        whenever(methodCall = statementSpec.params(anyList<Any>())).thenReturn(statementSpec)
-        whenever(methodCall = statementSpec.query(Long::class.java)).thenReturn(mappedQuerySpec)
-        val mappedQuerySpecUsers = mock<JdbcClient.MappedQuerySpec<JdbcClient.MappedQuerySpec<Long>>>()
-        whenever(methodCall = statementSpec.query { _: ResultSet, _: Int -> mappedQuerySpec }).thenReturn(mappedQuerySpecUsers)
-        whenever(methodCall = mappedQuerySpec.single()).thenReturn(2)
-        whenever(methodCall = mappedQuerySpec.list()).thenReturn(listOf())
+        val countStatementSpec: JdbcClient.StatementSpec = mock()
+        val countMappedQuerySpec: JdbcClient.MappedQuerySpec<Long> = mock()
+        val userStatementSpec: JdbcClient.StatementSpec = mock()
+        val userMappedQuerySpec: JdbcClient.MappedQuerySpec<User> = mock()
+
+        // Mock count query chain
+        `when`(jdbcClient.sql(anyString())).thenReturn(countStatementSpec, userStatementSpec)
+        `when`(countStatementSpec.params(any<List<Any>>())).thenReturn(countStatementSpec)
+        `when`(countStatementSpec.query(Long::class.java)).thenReturn(countMappedQuerySpec)
+        `when`(countMappedQuerySpec.single()).thenReturn(2)
+
+        // Mock user query chain
+        lenient().`when`(userStatementSpec.params(any<List<Any>>())).thenReturn(userStatementSpec)
+        lenient().`when`(userStatementSpec.query(any<RowMapper<User>>())).thenReturn(userMappedQuerySpec)
+        lenient().`when`(userMappedQuerySpec.list()).thenReturn(listOf())
+
         // When
-        val result: Page<User> = userService.getUsersWithJdbcClient(page = 0, size = 10, name = "q",
-            email = "q", roleIds = listOf("1"))
+        val result: Page<User> = userService.getUsersWithJdbcClient(
+            page = 0,
+            size = 10,
+            name = "q",
+            email = "q",
+            roleIds = listOf("1")
+        )
+
         // Then
         assertEquals(2, result.totalElements)
         assertEquals(0, result.content.size)
