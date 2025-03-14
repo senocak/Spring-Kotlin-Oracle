@@ -14,18 +14,18 @@ import javax.sql.DataSource
 
 @Component
 class OracleConfiguration(
-    private val flywayProperties: FlywayProperties,
+    private val flywayProperties: FlywayConfig,
     private val dataSourceProperties: DataSourceConfigs,
 ) {
     @Bean
     fun dataSource(): DataSource =
         PoolDataSourceFactory.getPoolDataSource()
             .also {dataSource: PoolDataSource ->
-                dataSource.connectionFactoryClassName = dataSourceProperties.ucp.connectionFactoryClassName
                 dataSource.url = dataSourceProperties.url
                 dataSource.user = dataSourceProperties.username
                 dataSource.password = dataSourceProperties.password
                 // UCP-specific configurations
+                dataSource.connectionFactoryClassName = dataSourceProperties.ucp.connectionFactoryClassName
                 dataSource.initialPoolSize = dataSourceProperties.ucp.initialPoolSize
                 dataSource.minPoolSize = dataSourceProperties.ucp.minPoolSize
                 dataSource.maxPoolSize = dataSourceProperties.ucp.maxPoolSize
