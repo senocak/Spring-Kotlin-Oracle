@@ -88,13 +88,20 @@ tasks.withType<KotlinCompile> {
 tasks.withType<Test> {
     useJUnitPlatform()
     maxHeapSize = "1G"
-    val testType: String = "unit"
-        .takeUnless { project.hasProperty("profile") }
-        ?: "${project.property("profile")}"
-    println(message = "Profile test type: $testType")
-    when (testType) {
-        "integration" -> include("**/*IT.*")
-        else -> include("**/*Test.*")
+    enabled = project.hasProperty("skipTests")
+    if (enabled) {
+        val skipTests: List<String> = (project.property("skipTests") ?: "")
+            .toString()
+            .split(",")
+            .toList()
+        if (skipTests.contains(element = "unit")) {
+            println(message = "Unit tests are skipping")
+            exclude("**/*Test.*")
+        }
+        if (skipTests.contains(element = "integration")) {
+            println(message = "Integration tests are skipping")
+            exclude("**/*IT.*")
+        }
     }
 }
 
