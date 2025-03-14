@@ -1,6 +1,6 @@
 package com.github.senocak.service
 
-import com.github.senocak.config.OracleConfiguration
+import com.github.senocak.config.DataSourceConfigs
 import com.github.senocak.domain.Role
 import com.github.senocak.domain.RoleRepository
 import com.github.senocak.domain.User
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component
 @Component
 @Async
 class Listeners(
-    private val dataSourceConfig: OracleConfiguration,
+    private val dataSourceConfig: DataSourceConfigs,
     private val userService: UserService,
     private val roleRepository: RoleRepository,
     private val passwordEncoder: PasswordEncoder
