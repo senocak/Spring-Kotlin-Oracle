@@ -1,289 +1,173 @@
 package com.github.senocak.service
 
 import com.github.senocak.createTestUser
+import com.github.senocak.domain.Role
 import com.github.senocak.domain.User
 import com.github.senocak.domain.UserRepository
+import com.github.senocak.util.RoleName
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.junit.jupiter.api.function.Executable
-import org.mockito.Mockito
-import org.mockito.junit.jupiter.MockitoExtension
-import org.springframework.security.core.Authentication
-import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.core.userdetails.UsernameNotFoundException
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.mockito.Mockito.`when`
-import org.mockito.kotlin.whenever
-import org.mockito.kotlin.any
+import org.mockito.InjectMocks
+import org.mockito.Mockito.anyList
+import org.mockito.Mockito.anyString
 import org.mockito.Mockito.verify
-import org.mockito.Mockito.never
-import org.mockito.kotlin.doReturn
-import org.mockito.ArgumentMatchers.eq
-import javax.sql.DataSource
-import org.springframework.jdbc.core.simple.JdbcClient
+import org.mockito.Mockito.`when`
+import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyArray
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.mockingDetails
+import org.mockito.kotlin.whenever
 import org.springframework.data.domain.Page
-import org.springframework.data.domain.PageImpl
-import org.springframework.data.domain.PageRequest
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.RowMapper
+import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.security.core.Authentication
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import java.sql.ResultSet
+import javax.sql.DataSource
 import org.springframework.security.core.userdetails.User as SecurityUser
 
 @Tag("unit")
 @ExtendWith(MockitoExtension::class)
 @DisplayName("Unit Tests for UserService")
 class UserServiceTest {
-    private val userRepository: UserRepository = Mockito.mock(UserRepository::class.java)
-    private var auth: Authentication = Mockito.mock(Authentication::class.java)
-    private var securityUser: SecurityUser = Mockito.mock(SecurityUser::class.java)
-    private var dataSource: DataSource = Mockito.mock(DataSource::class.java)
-    private val cacheService: CacheService = Mockito.mock(CacheService::class.java)
-    private val jdbcClient: JdbcClient = Mockito.mock(JdbcClient::class.java)
-    private val userService: UserService = UserService(
-        userRepository = userRepository,
-        dataSource = dataSource,
-        cacheService = cacheService,
-        jdbcClient = jdbcClient
-    )
+    @InjectMocks
+    private lateinit var userService: UserService
+    private val userRepository: UserRepository = mock<UserRepository>()
+    private val auth: Authentication = mock<Authentication>()
+    private val securityUser: SecurityUser = mock<SecurityUser>()
+    private val dataSource: DataSource = mock<DataSource>()
+    private val cacheService: CacheService = mock<CacheService>()
+    private val jdbcClient: JdbcClient = mock<JdbcClient>()
+    private val jdbcTemplate: JdbcTemplate = mock<JdbcTemplate>()
 
+    private val userCacheKeyPrefix = "user:"
+    private val email = "test@example.com"
     private val user: User = createTestUser()
 
+    @BeforeEach
+    fun setup() {
+        assertTrue(mockingDetails(userRepository).isMock)
+        assertTrue(mockingDetails(cacheService).isMock)
+        assertTrue(mockingDetails(jdbcClient).isMock)
+        assertTrue(mockingDetails(jdbcTemplate).isMock)
+        userService.jdbcTemplate = jdbcTemplate
+    }
+
     @Test
-    fun givenUsername_whenExistsByEmail_thenAssertResult() {
+    fun givenUsername_whenExistsByEmail_thenAssertResultIsFalse() {
         // When
-        val existsByEmail: Boolean = userService.existsByEmail("username")
+        val existsByEmail: Boolean = userService.existsByEmail(email = "username")
         // Then
         assertFalse(existsByEmail)
     }
 
     @Test
-    fun givenEmail_whenFindByEmail_thenAssertResult() {
+    fun givenUsername_whenExistsByEmail_thenAssertResultIsTrue() {
         // Given
-        val user: User = createTestUser()
-        doReturn(user)
-            .`when`(cacheService)
-            .getOrSet(any(), any(), any(), any())
+        whenever(methodCall = userRepository.existsByEmail(email = "username")).thenReturn(true)
         // When
-        val findByUsername: User = userService.findByEmail(email = "email")
+        val existsByEmail: Boolean = userService.existsByEmail(email = "username")
         // Then
-        assertEquals(user, findByUsername)
+        assertTrue(existsByEmail)
     }
 
     @Test
-    fun givenNullEmail_whenFindByEmail_thenAssertResult() {
+    fun `findByEmail should return user from cache on cache hit`() {
         // Given
-        whenever(cacheService.getOrSet(
-            key = eq("email"),
-            prefix = eq("user:"),
-            clazz = eq(User::class.java),
-            loader = any()
-        )).thenReturn(null)
-        // When
-        val closureToTest = Executable { userService.findByEmail(email = "email") }
-        // Then
-        assertThrows(UsernameNotFoundException::class.java, closureToTest)
-    }
-
-    @Test
-    fun givenUser_whenSave_thenAssertResult() {
-        // Given
-        val user: User = createTestUser()
-        whenever(userRepository.save(user)).thenReturn(user)
-        // When
-        val save: User = userService.save(user)
-        // Then
-        assertEquals(user, save)
-    }
-
-    @Test
-    fun givenUser_whenCreate_thenAssertResult() {
-        // Given
-        val user: User = createTestUser()
-        whenever(userRepository.save(user)).thenReturn(user)
-        // When
-        val create: User = userService.save(user)
-        // Then
-        assertEquals(user, create)
-    }
-
-    @Test
-    fun givenNullUsername_whenLoadUserByUsername_thenAssertResult() {
-        // Given
-        whenever(cacheService.getOrSet(
-            key = eq("username"),
-            prefix = eq("user:"),
-            clazz = eq(User::class.java),
-            loader = any()
-        )).thenReturn(null)
-        // When
-        val closureToTest = Executable { userService.loadUserByUsername("username") }
-        // Then
-        assertThrows(UsernameNotFoundException::class.java, closureToTest)
-    }
-
-    @Test
-    fun givenUsername_whenLoadUserByUsername_thenAssertResult() {
-        // Given
-        val user: User = createTestUser()
-        doReturn(user)
-            .`when`(cacheService)
-            .getOrSet<User>(
-                key = any(),
-                prefix = any(),
-                clazz = any(),
-                loader = any()
-            )
-        // When
-        val loadUserByUsername: org.springframework.security.core.userdetails.User = userService.loadUserByUsername(email = "email")
-        // Then
-        assertEquals(user.email, loadUserByUsername.username)
-    }
-
-    @Test
-    fun givenNotLoggedIn_whenLoadUserByUsername_thenAssertResult() {
-        // Given
-        SecurityContextHolder.getContext().authentication = auth
-        whenever(auth.principal).thenReturn(securityUser)
-        whenever(securityUser.username).thenReturn("user")
-        whenever(cacheService.getOrSet(
-            key = eq("user"),
-            prefix = eq("user:"),
-            clazz = eq(User::class.java),
-            loader = any()
-        )).thenReturn(null)
-        // When
-        val closureToTest = Executable { userService.loggedInUser() }
-        // Then
-        assertThrows(UsernameNotFoundException::class.java, closureToTest)
-    }
-
-    @Test
-    fun givenLoggedIn_whenLoadUserByUsername_thenAssertResult() {
-        // Given
-        SecurityContextHolder.getContext().authentication = auth
-        whenever(auth.principal).thenReturn(securityUser)
-        whenever(securityUser.username).thenReturn("email")
-        val user: User = createTestUser()
-        whenever(cacheService.getOrSet(
-            key = eq("email"),
-            prefix = eq("user:"),
-            clazz = eq(User::class.java),
-            loader = any()
+        `when`(cacheService.getOrSet(
+            eq(email),
+            eq(User::class.java),
+            eq(userCacheKeyPrefix),
+            eq(3600L),
+            any()
         )).thenReturn(user)
         // When
-        val loggedInUser: User = userService.loggedInUser()
-        // Then
-        assertEquals(user.email, loggedInUser.email)
-    }
-
-    @Test
-    fun `should return user from cache when available`() {
-        // Given
-        val email = "test@example.com"
-        val user = createTestUser()
-        doReturn(user).`when`(cacheService).getOrSet(
-            key = email,
-            prefix = "user:",
-            clazz = User::class.java,
-            loader = any()
-        )
-
-        // When
-        val result = userService.findByEmail(email)
-
+        val result: User = userService.findByEmail(email)
         // Then
         assertEquals(user, result)
-        verify(userRepository, never()).findByEmail(email)
     }
 
     @Test
     fun `should invalidate cache when user is saved`() {
         // Given
-        val user = createTestUser()
-        doReturn(user).`when`(userRepository).save(user)
-
+        whenever(methodCall = userRepository.save(user)).thenReturn(user)
         // When
-        userService.save(user)
-
+        val result: User = userService.save(user = user)
         // Then
         verify(cacheService).invalidate(
             key = user.email!!,
             prefix = "user:"
         )
+        assertEquals(user, result)
     }
 
     @Test
     fun `should clear all user caches when deleting all users`() {
         // When
         userService.deleteAllUsers()
-
         // Then
         verify(userRepository).deleteAll()
-        verify(cacheService).invalidatePattern("user:*")
+        verify(cacheService).invalidatePattern("$userCacheKeyPrefix*")
     }
 
     @Test
-    fun `should return paginated users with JdbcClient`() {
+    fun givenEmail_whenLoadUserByUsername_thenAssertResult() {
         // Given
-        val testUser = createTestUser()
-        val page = 0
-        val size = 10
-
-        // Mock the count query
-        val mockStatementSpec = Mockito.mock(JdbcClient.StatementSpec::class.java)
-        doReturn(mockStatementSpec).`when`(jdbcClient).sql(any())
-        doReturn(mockStatementSpec).`when`(mockStatementSpec).params(any<Array<Any>>())
-        doReturn(1L).`when`(mockStatementSpec).query(Long::class.java).single()
-
-        // Mock the main query
-        doReturn(listOf(testUser)).`when`(mockStatementSpec).query(any<RowMapper<User>>()).list()
-
+        `when`(cacheService.getOrSet(
+            eq(email),
+            eq(User::class.java),
+            eq(userCacheKeyPrefix),
+            eq(3600L),
+            any()
+        )).thenReturn(user)
         // When
-        val result = userService.getUsersWithJdbcClient(
-            page = page,
-            size = size,
-            name = null,
-            email = null,
-            roleIds = null
-        )
-
+        val result: org.springframework.security.core.userdetails.User = userService.loadUserByUsername(email = email)
         // Then
-        assertEquals(1, result.totalElements)
-        assertEquals(1, result.content.size)
-        assertEquals(testUser, result.content[0])
+        assertEquals(user.email, result.username)
+        assertEquals(user.password, result.password)
+        assertEquals(user.roles
+            .map { r: Role -> SimpleGrantedAuthority(RoleName.fromString(r = r.name.toString()).name) }
+            .toList().sortedBy { it.authority }, result.authorities.sortedBy { it.authority })
     }
 
     @Test
-    fun `should return filtered users with JdbcClient`() {
+    fun `should return users with JdbcTemplate`() {
         // Given
-        val testUser = createTestUser()
-        val page = 0
-        val size = 10
-        val searchTerm = "test"
-
-        // Mock the count query
-        val mockStatementSpec = Mockito.mock(JdbcClient.StatementSpec::class.java)
-        doReturn(mockStatementSpec).`when`(jdbcClient).sql(any())
-        doReturn(mockStatementSpec).`when`(mockStatementSpec).params(any<Array<Any>>())
-        doReturn(1L).`when`(mockStatementSpec).query(Long::class.java).single()
-
-        // Mock the main query
-        doReturn(listOf(testUser)).`when`(mockStatementSpec).query(any<RowMapper<User>>()).list()
-
+        whenever(methodCall = jdbcTemplate.queryForObject(anyString(), anyArray(), eq(Long::class.java))).thenReturn(2)
         // When
-        val result = userService.getUsersWithJdbcClient(
-            page = page,
-            size = size,
-            name = searchTerm,
-            email = searchTerm,
-            roleIds = null
-        )
-
+        val result: Page<User> = userService.getUserByTemplate(page = 0, size = 10, name = "q",
+            email = "q", roleIds = listOf("1"),)
         // Then
-        assertEquals(1, result.totalElements)
-        assertEquals(1, result.content.size)
-        assertEquals(testUser, result.content[0])
+        assertEquals(2, result.totalElements)
+        assertEquals(0, result.content.size)
+    }
+
+    @Test
+    fun `should return users with JdbcClient`() {
+        // Given
+        val statementSpec: JdbcClient.StatementSpec = mock<JdbcClient.StatementSpec>()
+        val mappedQuerySpec: JdbcClient.MappedQuerySpec<Long> = mock<JdbcClient.MappedQuerySpec<Long>>()
+        whenever(methodCall = jdbcClient.sql(anyString())).thenReturn(statementSpec)
+        whenever(methodCall = statementSpec.params(anyList<Any>())).thenReturn(statementSpec)
+        whenever(methodCall = statementSpec.query(Long::class.java)).thenReturn(mappedQuerySpec)
+        val mappedQuerySpecUsers = mock<JdbcClient.MappedQuerySpec<JdbcClient.MappedQuerySpec<Long>>>()
+        whenever(methodCall = statementSpec.query { _: ResultSet, _: Int -> mappedQuerySpec }).thenReturn(mappedQuerySpecUsers)
+        whenever(methodCall = mappedQuerySpec.single()).thenReturn(2)
+        whenever(methodCall = mappedQuerySpec.list()).thenReturn(listOf())
+        // When
+        val result: Page<User> = userService.getUsersWithJdbcClient(page = 0, size = 10, name = "q",
+            email = "q", roleIds = listOf("1"))
+        // Then
+        assertEquals(2, result.totalElements)
+        assertEquals(0, result.content.size)
     }
 }

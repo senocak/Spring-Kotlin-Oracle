@@ -18,13 +18,8 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.http.MediaType
-import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
-import org.mockito.Mockito.`when`
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.ArgumentMatchers.isNull
-import org.mockito.ArgumentMatchers.any
 import com.github.senocak.domain.Role
 import com.github.senocak.util.RoleName
 import com.github.senocak.exception.RestExceptionHandler
@@ -150,7 +145,7 @@ class UserControllerTest {
             testUser.roles = listOf(role)
 
             val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
-            Mockito.`when`(userService.getUsersWithPagination(0, 10, null, null, null, "AND"))
+            Mockito.`when`(userService.getUserByTemplate(0, 10, null, null, null, "AND"))
                 .thenReturn(page)
 
             // When
@@ -176,7 +171,7 @@ class UserControllerTest {
             testUser.roles = listOf(role)
 
             val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
-            Mockito.`when`(userService.getUsersWithPagination(0, 10, "Test", "Test", null, "AND"))
+            Mockito.`when`(userService.getUserByTemplate(0, 10, "Test", "Test", null, "AND"))
                 .thenReturn(page)
 
             // When
@@ -204,20 +199,20 @@ class UserControllerTest {
         }
 
         @Test
-        fun `given_whenGetAllUsers_thenReturn200`() {
+        fun `given_whenGetAllUsersWithTemplate_thenReturn200`() {
             // Given
             val testUser = User(name = "Test User", email = "test@test.com", password = "password")
             val role = Role(name = RoleName.ROLE_USER)
             testUser.roles = listOf(role)
 
             val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
-            Mockito.`when`(userService.getUsersWithPagination(0, 10, null, null, null, "AND"))
+            Mockito.`when`(userService.getUserByTemplate(0, 10, null, null, null, "AND"))
                 .thenReturn(page)
 
             // When
             mockMvc.perform(
                 get("${BaseController.V1_USER_URL}?page=0&size=10")
-                    .header("X-API-VERSION", "jdbc")
+                    .header("X-API-VERSION", "template")
                     .contentType(MediaType.APPLICATION_JSON)
             )
             // Then
@@ -230,7 +225,7 @@ class UserControllerTest {
         }
 
         @Test
-        fun `givenFilters_whenGetAllUsers_thenReturnFilteredResults`() {
+        fun `givenFilters_whenGetAllUsersWithClient_thenReturnFilteredResults`() {
             // Given
             val testUser = User(name = "Test User", email = "test@test.com", password = "password")
             val role = Role(name = RoleName.ROLE_USER)
@@ -238,13 +233,13 @@ class UserControllerTest {
 
             val page = PageImpl(listOf(testUser), PageRequest.of(0, 10), 1)
             val roleIds = listOf("role-id-1")
-            Mockito.`when`(userService.getUsersWithPagination(0, 10, "Test", "Test", roleIds, "OR"))
+            Mockito.`when`(userService.getUsersWithJdbcClient(0, 10, "Test", "Test", roleIds, "OR"))
                 .thenReturn(page)
 
             // When
             mockMvc.perform(
                 get("${BaseController.V1_USER_URL}?page=0&size=10&q=Test&roleIds=role-id-1&operator=OR")
-                    .header("X-API-VERSION", "jdbc")
+                    .header("X-API-VERSION", "client")
                     .contentType(MediaType.APPLICATION_JSON)
             )
             // Then

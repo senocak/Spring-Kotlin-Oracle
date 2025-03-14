@@ -130,7 +130,7 @@ class UserController(
         @Parameter(name = "roleIds", description = "List of role ids", example = "12b9374e-4e52-4142-a1af-16144ef4a27d") @RequestParam(required = false) roleIds: List<String>?,
         @Parameter(name = "operator", description = "Date range end", example = "AND") @RequestParam(required = false, defaultValue = "AND") operator: String? = "AND",
     ): UserPaginationDTO = run {
-        val usersPage: Page<User> = userService.getUsersWithPagination(page = page, size = size, name = q,
+        val usersPage: Page<User> = userService.getUserByTemplate(page = page, size = size, name = q,
             email = q, roleIds = roleIds, operator = operator)
         UserPaginationDTO(
             pageModel = usersPage,

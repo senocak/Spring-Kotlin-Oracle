@@ -22,13 +22,14 @@ import javax.sql.DataSource
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
+import org.springframework.jdbc.core.JdbcTemplate
 
 @Service
 class UserService(
     private val userRepository: UserRepository,
     private val dataSource: DataSource,
     private val cacheService: CacheService,
-    private val jdbcClient: JdbcClient
+    private val jdbcClient: JdbcClient,
 ): UserDetailsService, JdbcDaoSupport() {
     private val log: Logger by logger()
     private val userCacheKey = "user:"
@@ -38,8 +39,6 @@ class UserService(
         setDataSource(dataSource)
         log.info("Datasource used: $dataSource")
     }
-
-    fun findAll(): MutableIterable<User> = userRepository.findAll()
 
     /**
      * @param email -- string email to find in db
@@ -66,7 +65,7 @@ class UserService(
     fun save(user: User): User {
         val savedUser: User = userRepository.save(user)
         // Invalidate cache for the user's email
-        user.email?.let { email ->
+        user.email?.let { email: String ->
             cacheService.invalidate(key = email, prefix = userCacheKey)
         }
         return savedUser
@@ -101,12 +100,12 @@ class UserService(
         (SecurityContextHolder.getContext().authentication.principal as org.springframework.security.core.userdetails.User).username
             .run { findByEmail(email = this) }
 
-    fun getUsersWithPagination(page: Int, size: Int, name: String?, email: String?, roleIds: List<String>?, operator: String? = "AND"): Page<User> {
+    fun getUserByTemplate(page: Int, size: Int, name: String?, email: String?, roleIds: List<String>?, operator: String? = "AND"): Page<User> {
         val (whereClause: String, params: MutableList<Any>) = buildWhereClause(name = name, email = email, roleIds = roleIds, operator = operator)
         // Build the count query
         val countSql = "SELECT COUNT(DISTINCT u.id) FROM users u LEFT JOIN user_roles ur ON u.id = ur.user_id $whereClause"
         log.info("Sql statement for count: $countSql")
-        val totalElements = jdbcTemplate!!.queryForObject(countSql, params.toTypedArray(), Long::class.java) ?: 0
+        val totalElements: Long = jdbcTemplate!!.queryForObject(countSql, params.toTypedArray(), Long::class.java) ?: 0
 
         // Build the main query with pagination
         val sql: String = """
